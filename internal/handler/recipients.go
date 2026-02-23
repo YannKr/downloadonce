@@ -19,17 +19,12 @@ type recipientPageData struct {
 }
 
 func (h *Handler) RecipientList(w http.ResponseWriter, r *http.Request) {
-	accountID := auth.AccountFromContext(r.Context())
-	recipients, err := db.ListRecipients(h.DB, accountID)
+	recipients, err := db.ListRecipients(h.DB)
 	if err != nil {
 		http.Error(w, "Internal error", 500)
 		return
 	}
-	h.render(w, "recipients.html", PageData{
-		Title:         "Recipients",
-		Authenticated: true,
-		Data:          recipientPageData{Recipients: recipients},
-	})
+	h.renderAuth(w, r, "recipients.html", "Recipients", recipientPageData{Recipients: recipients})
 }
 
 func (h *Handler) RecipientCreate(w http.ResponseWriter, r *http.Request) {
@@ -40,9 +35,10 @@ func (h *Handler) RecipientCreate(w http.ResponseWriter, r *http.Request) {
 	org := strings.TrimSpace(r.FormValue("org"))
 
 	if name == "" || email == "" {
-		recipients, _ := db.ListRecipients(h.DB, accountID)
+		recipients, _ := db.ListRecipients(h.DB)
 		h.render(w, "recipients.html", PageData{
 			Title: "Recipients", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: "Name and email are required.",
 			Data:  recipientPageData{Recipients: recipients, FormName: name, FormEmail: email, FormOrg: org},
 		})
@@ -58,9 +54,10 @@ func (h *Handler) RecipientCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := db.CreateRecipient(h.DB, recipient); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			recipients, _ := db.ListRecipients(h.DB, accountID)
+			recipients, _ := db.ListRecipients(h.DB)
 			h.render(w, "recipients.html", PageData{
 				Title: "Recipients", Authenticated: true,
+				IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 				Error: "A recipient with this email already exists.",
 				Data:  recipientPageData{Recipients: recipients, FormName: name, FormEmail: email, FormOrg: org},
 			})
@@ -112,32 +109,21 @@ func (h *Handler) RecipientImport(w http.ResponseWriter, r *http.Request) {
 		created++
 	}
 
-	recipients, _ := db.ListRecipients(h.DB, accountID)
+	recipients, _ := db.ListRecipients(h.DB)
 	flash := ""
-	if created > 0 || skipped > 0 {
-		flash = strings.TrimSpace(strings.Join([]string{
-			func() string {
-				if created > 0 {
-					return strings.Repeat("", 0) + string(rune(created+'0')) + " created"
-				}
-				return ""
-			}(),
-		}, ", "))
-		// Simpler approach
-		flash = ""
-		if created > 0 {
-			flash += strings.Replace("N created", "N", strings.TrimSpace(itoa(created)), 1)
+	if created > 0 {
+		flash += strings.Replace("N created", "N", strings.TrimSpace(itoa(created)), 1)
+	}
+	if skipped > 0 {
+		if flash != "" {
+			flash += ", "
 		}
-		if skipped > 0 {
-			if flash != "" {
-				flash += ", "
-			}
-			flash += strings.Replace("N skipped", "N", strings.TrimSpace(itoa(skipped)), 1)
-		}
+		flash += strings.Replace("N skipped", "N", strings.TrimSpace(itoa(skipped)), 1)
 	}
 
 	h.render(w, "recipients.html", PageData{
 		Title: "Recipients", Authenticated: true,
+		IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 		Flash: flash,
 		Data:  recipientPageData{Recipients: recipients},
 	})
@@ -145,6 +131,14 @@ func (h *Handler) RecipientImport(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) RecipientDelete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	accountID := auth.AccountFromContext(r.Context())
+
+	recipient, err := db.GetRecipient(h.DB, id)
+	if err != nil || recipient == nil || (recipient.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
 	db.DeleteRecipient(h.DB, id)
 	http.Redirect(w, r, "/recipients", http.StatusSeeOther)
 }

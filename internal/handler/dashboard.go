@@ -10,8 +10,8 @@ import (
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
-	assets, _ := db.ListAssets(h.DB, accountID)
-	campaigns, _ := db.ListCampaigns(h.DB, accountID)
+	assets, _ := db.ListAssets(h.DB)
+	campaigns, _ := db.ListCampaigns(h.DB, accountID, false)
 	events, _ := db.ListRecentDownloadEvents(h.DB, accountID, 20)
 
 	totalDownloads := 0
@@ -27,15 +27,11 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		Events         interface{}
 	}
 
-	h.render(w, "dashboard.html", PageData{
-		Title:         "Dashboard",
-		Authenticated: true,
-		Data: dashData{
-			TotalAssets:    len(assets),
-			TotalCampaigns: len(campaigns),
-			TotalDownloads: totalDownloads,
-			Campaigns:      campaigns,
-			Events:         events,
-		},
+	h.renderAuth(w, r, "dashboard.html", "Dashboard", dashData{
+		TotalAssets:    len(assets),
+		TotalCampaigns: len(campaigns),
+		TotalDownloads: totalDownloads,
+		Campaigns:      campaigns,
+		Events:         events,
 	})
 }

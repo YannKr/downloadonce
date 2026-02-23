@@ -1,0 +1,36 @@
+{{define "content"}}
+<div class="page-header">
+  <h1>All Campaigns</h1>
+</div>
+
+{{if .Data}}
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Creator</th>
+      <th>State</th>
+      <th>Asset</th>
+      <th>Recipients</th>
+      <th>Downloads</th>
+      <th>Created</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Data}}
+    <tr>
+      <td><a href="/campaigns/{{.ID}}">{{.Name}}</a></td>
+      <td>{{.CreatorName}}</td>
+      <td>{{stateBadge .State}}</td>
+      <td>{{.AssetName}}</td>
+      <td>{{.RecipientCount}}</td>
+      <td>{{.DownloadedCount}}</td>
+      <td>{{formatTime .CreatedAt}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="text-muted">No campaigns yet.</p>
+{{end}}
+{{end}}

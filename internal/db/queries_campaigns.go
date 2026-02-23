@@ -53,8 +53,8 @@ func GetCampaign(database *sql.DB, id string) (*model.Campaign, error) {
 	return c, nil
 }
 
-func ListCampaigns(database *sql.DB, accountID string) ([]model.CampaignSummary, error) {
-	rows, err := database.Query(`
+func ListCampaigns(database *sql.DB, accountID string, showAll bool) ([]model.CampaignSummary, error) {
+	query := `
 		SELECT c.id, c.account_id, c.asset_id, c.name, c.max_downloads, c.expires_at,
 		  c.visible_wm, c.invisible_wm, c.state, c.created_at, c.published_at,
 		  a.title AS asset_name, a.asset_type,
@@ -63,11 +63,21 @@ func ListCampaigns(database *sql.DB, accountID string) ([]model.CampaignSummary,
 		    JOIN download_tokens dt ON dt.id = de.token_id WHERE dt.campaign_id = c.id) AS downloaded_count,
 		  (SELECT COUNT(*) FROM jobs WHERE campaign_id = c.id) AS jobs_total,
 		  (SELECT COUNT(*) FROM jobs WHERE campaign_id = c.id AND state = 'COMPLETED') AS jobs_completed,
-		  (SELECT COUNT(*) FROM jobs WHERE campaign_id = c.id AND state = 'FAILED') AS jobs_failed
+		  (SELECT COUNT(*) FROM jobs WHERE campaign_id = c.id AND state = 'FAILED') AS jobs_failed,
+		  acc.name AS creator_name
 		FROM campaigns c
 		JOIN assets a ON a.id = c.asset_id
-		WHERE c.account_id = ?
-		ORDER BY c.created_at DESC`, accountID)
+		JOIN accounts acc ON acc.id = c.account_id`
+
+	var rows *sql.Rows
+	var err error
+	if showAll {
+		query += ` ORDER BY c.created_at DESC`
+		rows, err = database.Query(query)
+	} else {
+		query += ` WHERE c.account_id = ? ORDER BY c.created_at DESC`
+		rows, err = database.Query(query, accountID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +95,7 @@ func ListCampaigns(database *sql.DB, accountID string) ([]model.CampaignSummary,
 			&cs.AssetName, &cs.AssetType,
 			&cs.RecipientCount, &cs.DownloadedCount,
 			&cs.JobsTotal, &cs.JobsCompleted, &cs.JobsFailed,
+			&cs.CreatorName,
 		)
 		if err != nil {
 			return nil, err
@@ -118,9 +129,65 @@ func SetCampaignPublished(database *sql.DB, id string) error {
 	return err
 }
 
+func SetCampaignPublishedReady(database *sql.DB, id string) error {
+	_, err := database.Exec(
+		`UPDATE campaigns SET state = 'READY', published_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+		id,
+	)
+	return err
+}
+
 func boolToInt(b bool) int {
 	if b {
 		return 1
 	}
 	return 0
+}
+
+func ListExpiredCampaigns(database *sql.DB) ([]model.Campaign, error) {
+	rows, err := database.Query(`
+		SELECT id, account_id, asset_id, name, max_downloads, expires_at,
+		  visible_wm, invisible_wm, state, created_at, published_at
+		FROM campaigns
+		WHERE expires_at IS NOT NULL
+		  AND expires_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		  AND state != 'EXPIRED'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var campaigns []model.Campaign
+	for rows.Next() {
+		var c model.Campaign
+		var visibleWM, invisibleWM int
+		var expiresAt, publishedAt *string
+		var createdAt SQLiteTime
+		if err := rows.Scan(&c.ID, &c.AccountID, &c.AssetID, &c.Name, &c.MaxDownloads, &expiresAt,
+			&visibleWM, &invisibleWM, &c.State, &createdAt, &publishedAt); err != nil {
+			return nil, err
+		}
+		c.CreatedAt = createdAt.Time
+		c.VisibleWM = visibleWM != 0
+		c.InvisibleWM = invisibleWM != 0
+		if expiresAt != nil {
+			t, _ := time.Parse(time.RFC3339, *expiresAt)
+			c.ExpiresAt = &t
+		}
+		if publishedAt != nil {
+			t, _ := time.Parse(time.RFC3339, *publishedAt)
+			c.PublishedAt = &t
+		}
+		campaigns = append(campaigns, c)
+	}
+	return campaigns, rows.Err()
+}
+
+func ExpireCampaignAndTokens(database *sql.DB, campaignID string) error {
+	_, err := database.Exec(`UPDATE campaigns SET state = 'EXPIRED' WHERE id = ?`, campaignID)
+	if err != nil {
+		return err
+	}
+	_, err = database.Exec(`UPDATE download_tokens SET state = 'EXPIRED' WHERE campaign_id = ? AND state IN ('PENDING', 'ACTIVE')`, campaignID)
+	return err
 }

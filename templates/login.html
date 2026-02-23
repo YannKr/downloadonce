@@ -12,5 +12,8 @@
     </div>
     <button type="submit" class="btn btn-primary">Login</button>
   </form>
+  {{if .Data}}{{if index .Data "AllowRegistration"}}
+  <p style="margin-top:1rem;text-align:center">Don't have an account? <a href="/register">Register</a></p>
+  {{end}}{{end}}
 </div>
 {{end}}

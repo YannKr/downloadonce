@@ -140,6 +140,71 @@ func CountJobsByCampaign(database *sql.DB, campaignID string) (total, completed,
 	return
 }
 
+func ListJobsByCampaign(database *sql.DB, campaignID string) ([]model.Job, error) {
+	rows, err := database.Query(`
+		SELECT id, job_type, campaign_id, token_id, state, progress,
+		       COALESCE(error_message, ''), created_at
+		FROM jobs WHERE campaign_id = ?
+		ORDER BY created_at ASC`, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []model.Job
+	for rows.Next() {
+		var j model.Job
+		var createdAt SQLiteTime
+		if err := rows.Scan(&j.ID, &j.JobType, &j.CampaignID, &j.TokenID,
+			&j.State, &j.Progress, &j.ErrorMessage, &createdAt); err != nil {
+			return nil, err
+		}
+		j.CreatedAt = createdAt.Time
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}
+
+// EnqueueJobIfNotExists creates a watermark job for the given token only if
+// no PENDING or RUNNING job already exists for that token. Returns true if
+// a job already existed (no new row inserted).
+func EnqueueJobIfNotExists(database *sql.DB, j *model.Job) (alreadyExists bool, err error) {
+	res, err := database.Exec(
+		`INSERT INTO jobs (id, job_type, campaign_id, token_id, state)
+		 SELECT ?, ?, ?, ?, 'PENDING'
+		 WHERE NOT EXISTS (
+		   SELECT 1 FROM jobs WHERE token_id = ? AND state IN ('PENDING', 'RUNNING')
+		 )`,
+		j.ID, j.JobType, j.CampaignID, j.TokenID, j.TokenID,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 0, nil
+}
+
+// GetJobByToken returns the latest job for a given token ID.
+func GetJobByToken(database *sql.DB, tokenID string) (*model.Job, error) {
+	j := &model.Job{}
+	var createdAt SQLiteTime
+	err := database.QueryRow(`
+		SELECT id, job_type, campaign_id, token_id, state, progress,
+		       COALESCE(error_message, ''), created_at
+		FROM jobs WHERE token_id = ?
+		ORDER BY created_at DESC LIMIT 1`, tokenID,
+	).Scan(&j.ID, &j.JobType, &j.CampaignID, &j.TokenID,
+		&j.State, &j.Progress, &j.ErrorMessage, &createdAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	j.CreatedAt = createdAt.Time
+	return j, nil
+}
+
 func InsertWatermarkIndex(database *sql.DB, payloadHex, tokenID, campaignID, recipientID string) error {
 	_, err := database.Exec(
 		`INSERT OR IGNORE INTO watermark_index (payload_hex, token_id, campaign_id, recipient_id) VALUES (?, ?, ?, ?)`,

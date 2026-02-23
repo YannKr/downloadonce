@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -38,14 +39,48 @@ func (h *Handler) DownloadPage(w http.ResponseWriter, r *http.Request) {
 
 	switch token.State {
 	case "PENDING":
-		// Check campaign progress
-		total, completed, _, _ := db.CountJobsByCampaign(h.DB, token.CampaignID)
+		// On-demand watermarking: enqueue job if not already running
+		campaign, _ := db.GetCampaign(h.DB, token.CampaignID)
+		if campaign == nil || campaign.State == "DRAFT" {
+			h.render(w, "download_preparing.html", PageData{
+				Title: "Not Ready",
+				Data:  map[string]interface{}{"TokenID": token.ID, "Progress": 0},
+			})
+			return
+		}
+
+		asset, _ := db.GetAsset(h.DB, campaign.AssetID)
+		if asset == nil {
+			h.render(w, "download_expired.html", PageData{Title: "Error"})
+			return
+		}
+
+		jobType := "watermark_video"
+		if asset.AssetType == "image" {
+			jobType = "watermark_image"
+		}
+
+		job := &model.Job{
+			ID:         uuid.New().String(),
+			JobType:    jobType,
+			CampaignID: token.CampaignID,
+			TokenID:    token.ID,
+		}
+		_, err := db.EnqueueJobIfNotExists(h.DB, job)
+		if err != nil {
+			slog.Error("enqueue on-demand job", "error", err, "token", token.ID)
+		}
+
+		// Get current job progress
+		progress := 0
+		existingJob, _ := db.GetJobByToken(h.DB, token.ID)
+		if existingJob != nil {
+			progress = existingJob.Progress
+		}
+
 		h.render(w, "download_preparing.html", PageData{
 			Title: "Preparing",
-			Data: map[string]interface{}{
-				"Total":     total,
-				"Completed": completed,
-			},
+			Data:  map[string]interface{}{"TokenID": token.ID, "Progress": progress},
 		})
 		return
 	case "CONSUMED":
@@ -122,6 +157,23 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 		UserAgent:   r.UserAgent(),
 	}
 	db.InsertDownloadEvent(h.DB, event)
+
+	// Dispatch download webhook
+	if h.Webhook != nil {
+		recipient, _ := db.GetRecipient(h.DB, token.RecipientID)
+		webhookData := map[string]interface{}{
+			"token_id":     token.ID,
+			"campaign_id":  token.CampaignID,
+			"campaign_name": campaign.Name,
+			"recipient_id": token.RecipientID,
+			"ip_address":   event.IPAddress,
+		}
+		if recipient != nil {
+			webhookData["recipient_name"] = recipient.Name
+			webhookData["recipient_email"] = recipient.Email
+		}
+		h.Webhook.Dispatch(campaign.AccountID, "download", webhookData)
+	}
 
 	filePath := filepath.Join(h.Cfg.DataDir, *token.WatermarkedPath)
 	ext := filepath.Ext(filePath)

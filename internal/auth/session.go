@@ -18,6 +18,8 @@ const (
 type contextKey string
 
 const AccountIDKey contextKey = "account_id"
+const RoleKey contextKey = "role"
+const NameKey contextKey = "name"
 
 func SetSessionCookie(w http.ResponseWriter, sessionID, secret string) {
 	sig := sign(sessionID, secret)
@@ -64,8 +66,29 @@ func AccountFromContext(ctx context.Context) string {
 	return v
 }
 
+func RoleFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(RoleKey).(string)
+	return v
+}
+
+func NameFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(NameKey).(string)
+	return v
+}
+
+func IsAdmin(ctx context.Context) bool {
+	return RoleFromContext(ctx) == "admin"
+}
+
 func ContextWithAccount(ctx context.Context, accountID string) context.Context {
 	return context.WithValue(ctx, AccountIDKey, accountID)
+}
+
+func ContextWithAccountAndRole(ctx context.Context, accountID, role, name string) context.Context {
+	ctx = context.WithValue(ctx, AccountIDKey, accountID)
+	ctx = context.WithValue(ctx, RoleKey, role)
+	ctx = context.WithValue(ctx, NameKey, name)
+	return ctx
 }
 
 func sign(data, secret string) string {

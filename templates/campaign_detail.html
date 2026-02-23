@@ -5,22 +5,17 @@
     {{stateBadge .Data.Campaign.State}}
     {{if eq .Data.Campaign.State "DRAFT"}}
     <form method="POST" action="/campaigns/{{.Data.Campaign.ID}}/publish" style="display:inline"
-          onsubmit="return confirm('Publish this campaign? This will start watermarking for all recipients.')">
+          onsubmit="return confirm('Publish this campaign? Download links will be emailed to all recipients.')">
       <button type="submit" class="btn btn-primary">Publish</button>
     </form>
     {{end}}
   </div>
 </div>
 
-{{if eq .Data.Campaign.State "PROCESSING"}}
-<meta http-equiv="refresh" content="5">
-<div class="alert alert-info">Watermarking in progress. This page will auto-refresh.</div>
-{{end}}
-
 <div class="detail-grid">
   <div class="detail-item">
     <span class="detail-label">Asset</span>
-    <span>{{.Data.Asset.OriginalName}} ({{.Data.Asset.AssetType}})</span>
+    <span class="detail-value-truncate">{{.Data.Asset.OriginalName}} ({{.Data.Asset.AssetType}})</span>
   </div>
   <div class="detail-item">
     <span class="detail-label">Recipients</span>
@@ -55,6 +50,7 @@
       <th>Recipient</th>
       <th>Email</th>
       <th>State</th>
+      <th>Progress</th>
       <th>Downloads</th>
       <th>Link</th>
       <th></th>
@@ -62,14 +58,34 @@
   </thead>
   <tbody>
     {{range .Data.Tokens}}
-    <tr>
+    {{$tokenID := .ID}}
+    <tr id="token-{{.ID}}">
       <td>{{.RecipientName}}</td>
       <td>{{.RecipientEmail}}</td>
-      <td>{{stateBadge .State}}</td>
+      <td id="state-{{.ID}}">{{stateBadge .State}}</td>
+      <td id="progress-cell-{{.ID}}">
+        {{with index $.Data.Jobs $tokenID}}
+        <div class="progress-bar" id="progress-{{$tokenID}}">
+          <div class="progress-fill" style="width: {{.Progress}}%"></div>
+          <span class="progress-text">{{.Progress}}%</span>
+        </div>
+        {{else}}
+          {{if eq .State "ACTIVE"}}
+          <span class="text-muted">Done</span>
+          {{else if eq .State "PENDING"}}
+          <span class="text-muted">--</span>
+          {{else}}
+          <span class="text-muted">--</span>
+          {{end}}
+        {{end}}
+      </td>
       <td>{{.DownloadCount}}</td>
-      <td>
+      <td id="link-{{.ID}}">
         {{if eq .State "ACTIVE"}}
-        <input type="text" value="{{$.Data.BaseURL}}/d/{{.ID}}" readonly class="url-input" onclick="this.select()">
+        <div class="url-group">
+          <input type="text" value="{{$.Data.BaseURL}}/d/{{.ID}}" readonly class="url-input" onclick="this.select()">
+          <button class="btn btn-sm btn-copy" onclick="copyLink(this)" data-url="{{$.Data.BaseURL}}/d/{{.ID}}">Copy</button>
+        </div>
         {{else if eq .State "PENDING"}}
           {{if eq $.Data.Campaign.State "DRAFT"}}
         <span class="text-muted">Awaiting publish</span>
@@ -91,7 +107,7 @@
     </tr>
     {{if .DownloadEvents}}
     <tr>
-      <td colspan="6">
+      <td colspan="7">
         <details>
           <summary>Download history ({{len .DownloadEvents}})</summary>
           <table class="subtable">
@@ -115,4 +131,8 @@
 </table>
 
 <a href="/campaigns" class="btn btn-secondary">Back to Campaigns</a>
+
+<script>
+  connectCampaignSSE("{{.Data.Campaign.ID}}");
+</script>
 {{end}}

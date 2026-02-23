@@ -1,0 +1,61 @@
+{{define "content"}}
+<div class="page-header">
+  <h1>User Management</h1>
+</div>
+
+<h2>Create User</h2>
+<form method="POST" action="/admin/users" class="form-inline" style="margin-bottom:2rem">
+  <div class="form-group">
+    <input type="text" name="name" placeholder="Name" required>
+  </div>
+  <div class="form-group">
+    <input type="email" name="email" placeholder="Email" required>
+  </div>
+  <div class="form-group">
+    <input type="password" name="password" placeholder="Password" required minlength="8">
+  </div>
+  <div class="form-group">
+    <select name="role">
+      <option value="member">Member</option>
+      <option value="admin">Admin</option>
+    </select>
+  </div>
+  <button type="submit" class="btn btn-primary">Create</button>
+</form>
+
+{{$data := .Data}}
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Email</th>
+      <th>Role</th>
+      <th>Status</th>
+      <th>Created</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range $data.Users}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td>{{.Email}}</td>
+      <td>{{stateBadge .Role}}</td>
+      <td>{{if .Enabled}}<span class="badge badge-green">Active</span>{{else}}<span class="badge badge-red">Disabled</span>{{end}}</td>
+      <td>{{formatTime .CreatedAt}}</td>
+      <td>
+        <form method="POST" action="/admin/users/{{.ID}}/promote" style="display:inline">
+          <button type="submit" class="btn btn-sm">{{if eq .Role "admin"}}Demote{{else}}Promote{{end}}</button>
+        </form>
+        <form method="POST" action="/admin/users/{{.ID}}/toggle" style="display:inline">
+          <button type="submit" class="btn btn-sm">{{if .Enabled}}Disable{{else}}Enable{{end}}</button>
+        </form>
+        <form method="POST" action="/admin/users/{{.ID}}/delete" style="display:inline" onsubmit="return confirm('Delete this user?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

@@ -1,0 +1,94 @@
+{{define "content"}}
+<h1>Settings</h1>
+
+{{if .Data.NewAPIKey}}
+<div class="alert alert-success">
+  <strong>New API Key:</strong>
+  <code style="display:block;margin:8px 0;padding:8px;background:#1a1a2e;color:#fff;border-radius:4px;word-break:break-all">{{.Data.NewAPIKey}}</code>
+  Copy this key now. It will not be shown again.
+</div>
+{{end}}
+
+<h2>API Keys</h2>
+<p class="text-muted">Use API keys to authenticate programmatic access. Include the key in requests as <code>Authorization: Bearer do_...</code></p>
+
+{{if .Data.APIKeys}}
+<table>
+  <thead>
+    <tr><th>Name</th><th>Key Prefix</th><th>Created</th><th>Last Used</th><th></th></tr>
+  </thead>
+  <tbody>
+    {{range .Data.APIKeys}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td><code>do_{{.KeyPrefix}}...</code></td>
+      <td>{{formatTime .CreatedAt}}</td>
+      <td>{{if .LastUsedAt}}{{formatTimePtr .LastUsedAt}}{{else}}<span class="text-muted">Never</span>{{end}}</td>
+      <td>
+        <form method="POST" action="/settings/apikeys/{{.ID}}/delete"
+              onsubmit="return confirm('Delete this API key?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="text-muted">No API keys yet.</p>
+{{end}}
+
+<form method="POST" action="/settings/apikeys" class="form-inline" style="margin-bottom:2rem">
+  <input type="text" name="name" placeholder="Key name (e.g. CI/CD)" class="form-input">
+  <button type="submit" class="btn btn-primary">Create API Key</button>
+</form>
+
+<hr>
+
+<h2>Webhooks</h2>
+<p class="text-muted">Receive HTTP POST notifications when events occur. Payloads are signed with HMAC-SHA256.</p>
+
+{{if .Data.Webhooks}}
+<table>
+  <thead>
+    <tr><th>URL</th><th>Events</th><th>Secret</th><th>Created</th><th></th></tr>
+  </thead>
+  <tbody>
+    {{range .Data.Webhooks}}
+    <tr>
+      <td class="text-truncate" style="max-width:300px">{{.URL}}</td>
+      <td>{{.Events}}</td>
+      <td><code>{{shortenID .Secret}}...</code></td>
+      <td>{{formatTime .CreatedAt}}</td>
+      <td>
+        <form method="POST" action="/settings/webhooks/{{.ID}}/delete"
+              onsubmit="return confirm('Delete this webhook?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="text-muted">No webhooks configured.</p>
+{{end}}
+
+<form method="POST" action="/settings/webhooks" style="margin-bottom:2rem">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input type="url" name="url" placeholder="https://example.com/webhook" class="form-input" required style="flex:1;min-width:250px">
+    <label class="checkbox-label"><input type="checkbox" name="events" value="download" checked> Download</label>
+    <label class="checkbox-label"><input type="checkbox" name="events" value="campaign_ready" checked> Campaign Ready</label>
+    <button type="submit" class="btn btn-primary">Add Webhook</button>
+  </div>
+</form>
+
+<hr>
+
+<h2>Email Notifications</h2>
+{{if .Data.SMTPEnabled}}
+<p>SMTP is <span class="badge badge-green">configured</span>. Download link emails will be sent to recipients when campaigns are published.</p>
+{{else}}
+<p>SMTP is <span class="badge badge-gray">not configured</span>. Set <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASS</code>, and <code>SMTP_FROM</code> environment variables to enable email delivery.</p>
+{{end}}
+{{end}}

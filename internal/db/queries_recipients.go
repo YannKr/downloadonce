@@ -14,10 +14,10 @@ func CreateRecipient(database *sql.DB, r *model.Recipient) error {
 	return err
 }
 
-func ListRecipients(database *sql.DB, accountID string) ([]model.Recipient, error) {
+func ListRecipients(database *sql.DB) ([]model.Recipient, error) {
 	rows, err := database.Query(
 		`SELECT id, account_id, name, email, org, created_at
-		 FROM recipients WHERE account_id = ? ORDER BY name ASC`, accountID,
+		 FROM recipients ORDER BY name ASC`,
 	)
 	if err != nil {
 		return nil, err
@@ -54,8 +54,8 @@ func GetOrCreateRecipientByEmail(database *sql.DB, accountID, name, email, org s
 	r := &model.Recipient{}
 	var createdAt SQLiteTime
 	err := database.QueryRow(
-		`SELECT id, account_id, name, email, org, created_at FROM recipients WHERE account_id = ? AND email = ?`,
-		accountID, email,
+		`SELECT id, account_id, name, email, org, created_at FROM recipients WHERE email = ?`,
+		email,
 	).Scan(&r.ID, &r.AccountID, &r.Name, &r.Email, &r.Org, &createdAt)
 	if err == nil {
 		r.CreatedAt = createdAt.Time

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}} - DownloadOnce</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/sse.js" defer></script>
 </head>
 <body>
   {{if .Authenticated}}
@@ -16,8 +17,13 @@
       <a href="/campaigns">Campaigns</a>
       <a href="/recipients">Recipients</a>
       <a href="/detect">Detect</a>
+      {{if .IsAdmin}}
+      <a href="/admin/users">Users</a>
+      <a href="/admin/campaigns">All Campaigns</a>
+      {{end}}
+      <a href="/settings">Settings</a>
       <form method="POST" action="/logout" style="display:inline">
-        <button type="submit" class="btn-link">Logout</button>
+        <button type="submit" class="btn-link">Logout ({{.UserName}})</button>
       </form>
     </div>
   </nav>

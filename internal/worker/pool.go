@@ -15,19 +15,25 @@ import (
 
 	"github.com/ypk/downloadonce/internal/config"
 	"github.com/ypk/downloadonce/internal/db"
+	"github.com/ypk/downloadonce/internal/email"
 	"github.com/ypk/downloadonce/internal/model"
+	"github.com/ypk/downloadonce/internal/sse"
 	"github.com/ypk/downloadonce/internal/watermark"
+	"github.com/ypk/downloadonce/internal/webhook"
 )
 
 type Pool struct {
 	database *sql.DB
 	cfg      *config.Config
+	mailer   *email.Mailer
+	webhook  *webhook.Dispatcher
+	sseHub   *sse.Hub
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
 }
 
-func NewPool(database *sql.DB, cfg *config.Config) *Pool {
-	return &Pool{database: database, cfg: cfg}
+func NewPool(database *sql.DB, cfg *config.Config, mailer *email.Mailer, webhookDispatcher *webhook.Dispatcher, sseHub *sse.Hub) *Pool {
+	return &Pool{database: database, cfg: cfg, mailer: mailer, webhook: webhookDispatcher, sseHub: sseHub}
 }
 
 func (p *Pool) Start(ctx context.Context) {
@@ -127,6 +133,9 @@ func (p *Pool) processJob(ctx context.Context, job *model.Job) error {
 		return fmt.Errorf("load recipient %s: %w", token.RecipientID, err)
 	}
 
+	db.UpdateJobProgress(p.database, job.ID, 10) // started
+	p.publishProgress(job, 10)
+
 	inputPath := filepath.Join(p.cfg.DataDir, asset.OriginalPath)
 	ext := filepath.Ext(asset.OriginalPath)
 	if job.JobType == "watermark_video" {
@@ -168,12 +177,22 @@ func (p *Pool) processJob(ctx context.Context, job *model.Job) error {
 			return err
 		}
 
+		db.UpdateJobProgress(p.database, job.ID, 30) // visible done
+		p.publishProgress(job, 30)
+
 		// For video: embed invisible watermarks into extracted key frames
 		if needsInvisible {
+			db.UpdateJobProgress(p.database, job.ID, 60) // invisible started
+			p.publishProgress(job, 60)
 			framesDir := filepath.Join(outDir, job.TokenID+"_frames")
 			if embedErr := watermark.InvisibleVideoEmbed(ctx, outputPath, payloadHex, p.pythonPath(), p.embedScriptPath(), framesDir); embedErr != nil {
 				slog.Warn("invisible video embed failed, continuing with visible only", "error", embedErr)
 			}
+			db.UpdateJobProgress(p.database, job.ID, 90) // invisible done
+			p.publishProgress(job, 90)
+		} else {
+			db.UpdateJobProgress(p.database, job.ID, 90)
+			p.publishProgress(job, 90)
 		}
 
 	case "watermark_image":
@@ -188,8 +207,13 @@ func (p *Pool) processJob(ctx context.Context, job *model.Job) error {
 			return err
 		}
 
+		db.UpdateJobProgress(p.database, job.ID, 30) // visible done
+		p.publishProgress(job, 30)
+
 		// Chain invisible watermark after visible
 		if needsInvisible {
+			db.UpdateJobProgress(p.database, job.ID, 60) // invisible started
+			p.publishProgress(job, 60)
 			jpegQuality := 92
 			if err := watermark.InvisibleImageEmbed(ctx, visibleOutput, outputPath, payloadHex, p.pythonPath(), p.embedScriptPath(), jpegQuality); err != nil {
 				slog.Warn("invisible image embed failed, using visible-only output", "error", err)
@@ -197,6 +221,11 @@ func (p *Pool) processJob(ctx context.Context, job *model.Job) error {
 			} else {
 				os.Remove(visibleOutput)
 			}
+			db.UpdateJobProgress(p.database, job.ID, 90) // invisible done
+			p.publishProgress(job, 90)
+		} else {
+			db.UpdateJobProgress(p.database, job.ID, 90)
+			p.publishProgress(job, 90)
 		}
 
 	default:
@@ -219,6 +248,8 @@ func (p *Pool) processJob(ctx context.Context, job *model.Job) error {
 	}
 
 	db.InsertWatermarkIndex(p.database, payloadHex, job.TokenID, job.CampaignID, recipient.ID)
+
+	p.publishTokenReady(job)
 
 	return nil
 }
@@ -350,13 +381,60 @@ func (p *Pool) checkCampaignCompletion(campaignID string) {
 		slog.Error("count jobs", "campaign", campaignID, "error", err)
 		return
 	}
-	if completed+failed >= total && total > 0 {
-		if failed > 0 {
-			slog.Warn("campaign has failed jobs", "campaign", campaignID, "failed", failed, "total", total)
-		}
-		db.UpdateCampaignState(p.database, campaignID, "READY")
-		slog.Info("campaign ready", "campaign", campaignID, "completed", completed, "failed", failed)
+	if completed+failed < total || total == 0 {
+		return
 	}
+	if failed > 0 {
+		slog.Warn("campaign has failed jobs", "campaign", campaignID, "failed", failed, "total", total)
+	}
+	slog.Info("all campaign jobs done", "campaign", campaignID, "completed", completed, "failed", failed)
+
+	campaign, err := db.GetCampaign(p.database, campaignID)
+	if err != nil || campaign == nil {
+		return
+	}
+
+	account, _ := db.GetAccountByID(p.database, campaign.AccountID)
+
+	// Send campaign ready email to account owner
+	if p.mailer != nil && p.mailer.Enabled() && account != nil {
+		go func() {
+			if err := p.mailer.SendCampaignReady(account.Email, account.Email, campaign.Name, completed); err != nil {
+				slog.Error("send campaign ready email", "error", err)
+			}
+		}()
+	}
+
+	// Dispatch campaign_ready webhook
+	if p.webhook != nil {
+		p.webhook.Dispatch(campaign.AccountID, "campaign_ready", map[string]interface{}{
+			"campaign_id":      campaignID,
+			"campaign_name":    campaign.Name,
+			"total_tokens":     total,
+			"completed_tokens": completed,
+			"failed_tokens":    failed,
+		})
+	}
+}
+
+func (p *Pool) publishProgress(job *model.Job, progress int) {
+	if p.sseHub == nil {
+		return
+	}
+	data := fmt.Sprintf(`{"token_id":"%s","progress":%d}`, job.TokenID, progress)
+	evt := sse.Event{Type: "progress", Data: data}
+	p.sseHub.Publish("token:"+job.TokenID, evt)
+	p.sseHub.Publish("campaign:"+job.CampaignID, evt)
+}
+
+func (p *Pool) publishTokenReady(job *model.Job) {
+	if p.sseHub == nil {
+		return
+	}
+	data := fmt.Sprintf(`{"token_id":"%s"}`, job.TokenID)
+	evt := sse.Event{Type: "token_ready", Data: data}
+	p.sseHub.Publish("token:"+job.TokenID, evt)
+	p.sseHub.Publish("campaign:"+job.CampaignID, evt)
 }
 
 func sleep(ctx context.Context, d time.Duration) {

@@ -8,11 +8,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	downloadonce "github.com/ypk/downloadonce"
+	"github.com/ypk/downloadonce/internal/cleanup"
 	"github.com/ypk/downloadonce/internal/config"
 	"github.com/ypk/downloadonce/internal/db"
+	"github.com/ypk/downloadonce/internal/email"
 	"github.com/ypk/downloadonce/internal/handler"
+	"github.com/ypk/downloadonce/internal/sse"
+	"github.com/ypk/downloadonce/internal/webhook"
 	"github.com/ypk/downloadonce/internal/worker"
 )
 
@@ -46,8 +51,35 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	slog.Info("database ready")
 
+	// Init email mailer
+	mailer := &email.Mailer{
+		Host: cfg.SMTPHost,
+		Port: cfg.SMTPPort,
+		User: cfg.SMTPUser,
+		Pass: cfg.SMTPPass,
+		From: cfg.SMTPFrom,
+	}
+	if mailer.Enabled() {
+		slog.Info("email enabled", "host", cfg.SMTPHost, "from", cfg.SMTPFrom)
+	}
+
+	// Init webhook dispatcher
+	webhookDispatcher := &webhook.Dispatcher{DB: database}
+
+	// Start cleanup scheduler
+	cleaner := &cleanup.Cleaner{
+		DB:       database,
+		DataDir:  cfg.DataDir,
+		Interval: time.Duration(cfg.CleanupIntervalMins) * time.Minute,
+	}
+	cleaner.Start(ctx)
+	defer cleaner.Stop()
+
+	// Create SSE hub for real-time updates
+	sseHub := sse.New()
+
 	// Start worker pool
-	pool := worker.NewPool(database, cfg)
+	pool := worker.NewPool(database, cfg, mailer, webhookDispatcher, sseHub)
 	pool.Start(ctx)
 	defer pool.Stop()
 
@@ -64,7 +96,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// Build handler and routes
-	h := handler.New(database, cfg, templateFS)
+	h := handler.New(database, cfg, templateFS, mailer, webhookDispatcher, sseHub)
 	router := h.Routes(staticFS)
 
 	srv := &http.Server{

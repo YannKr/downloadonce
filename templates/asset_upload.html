@@ -1,10 +1,10 @@
 {{define "content"}}
-<h1>Upload Asset</h1>
+<h1>Upload Assets</h1>
 
 <form method="POST" action="/assets/upload" enctype="multipart/form-data">
   <div class="form-group">
-    <label for="file">File (video or image)</label>
-    <input type="file" id="file" name="file" required accept="video/*,image/*">
+    <label for="files">Files (video or image — select multiple)</label>
+    <input type="file" id="files" name="files" required accept="video/*,image/*" multiple>
   </div>
   <button type="submit" class="btn btn-primary">Upload</button>
   <a href="/assets" class="btn btn-secondary">Cancel</a>

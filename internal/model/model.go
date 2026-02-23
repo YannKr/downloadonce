@@ -7,6 +7,8 @@ type Account struct {
 	Email        string
 	Name         string
 	PasswordHash string
+	Role         string // "admin" or "member"
+	Enabled      bool
 	CreatedAt    time.Time
 }
 
@@ -64,6 +66,7 @@ type CampaignSummary struct {
 	JobsTotal       int
 	JobsCompleted   int
 	JobsFailed      int
+	CreatorName     string
 }
 
 type DownloadToken struct {
@@ -114,4 +117,24 @@ type Job struct {
 	CreatedAt    time.Time
 	StartedAt    *time.Time
 	CompletedAt  *time.Time
+}
+
+type APIKey struct {
+	ID         string
+	AccountID  string
+	Name       string
+	KeyPrefix  string
+	KeyHash    string
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
+}
+
+type Webhook struct {
+	ID        string
+	AccountID string
+	URL       string
+	Secret    string
+	Events    string // comma-separated: "download", "campaign_ready"
+	Enabled   bool
+	CreatedAt time.Time
 }

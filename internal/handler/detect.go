@@ -15,10 +15,7 @@ import (
 )
 
 func (h *Handler) DetectForm(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "detect.html", PageData{
-		Title:         "Detect Watermark",
-		Authenticated: true,
-	})
+	h.renderAuth(w, r, "detect.html", "Detect Watermark", nil)
 }
 
 func (h *Handler) DetectSubmit(w http.ResponseWriter, r *http.Request) {
@@ -27,6 +24,7 @@ func (h *Handler) DetectSubmit(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(h.Cfg.MaxUploadBytes); err != nil {
 		h.render(w, "detect.html", PageData{
 			Title: "Detect Watermark", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: "Failed to parse upload.",
 		})
 		return
@@ -36,6 +34,7 @@ func (h *Handler) DetectSubmit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.render(w, "detect.html", PageData{
 			Title: "Detect Watermark", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: "No file selected.",
 		})
 		return
@@ -51,6 +50,7 @@ func (h *Handler) DetectSubmit(w http.ResponseWriter, r *http.Request) {
 	if !allowed[ext] {
 		h.render(w, "detect.html", PageData{
 			Title: "Detect Watermark", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: "Unsupported file type. Please upload an image (JPEG/PNG/WebP) or video (MP4/MKV/AVI/MOV/WebM).",
 		})
 		return
@@ -105,9 +105,5 @@ func (h *Handler) DetectResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, "detect_result.html", PageData{
-		Title:         "Detection Result",
-		Authenticated: true,
-		Data:          job,
-	})
+	h.renderAuth(w, r, "detect_result.html", "Detection Result", job)
 }

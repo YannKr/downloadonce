@@ -15,6 +15,14 @@ services:
       - FONT_PATH=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
       - VENV_PATH=/opt/venv
       - LOG_LEVEL=info
+      # SMTP (optional — uncomment to enable email delivery)
+      # - SMTP_HOST=smtp.example.com
+      # - SMTP_PORT=587
+      # - SMTP_USER=user@example.com
+      # - SMTP_PASS=secret
+      # - SMTP_FROM=noreply@example.com
+      # Cleanup interval in minutes (default 60)
+      # - CLEANUP_INTERVAL_MINS=60
     restart: unless-stopped
 
   # Optional: reverse proxy with automatic HTTPS

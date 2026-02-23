@@ -9,16 +9,23 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ypk/downloadonce/internal/auth"
 	"github.com/ypk/downloadonce/internal/config"
+	"github.com/ypk/downloadonce/internal/email"
+	"github.com/ypk/downloadonce/internal/sse"
+	"github.com/ypk/downloadonce/internal/webhook"
 )
 
 type Handler struct {
 	DB        *sql.DB
 	Cfg       *config.Config
+	Mailer    *email.Mailer
+	Webhook   *webhook.Dispatcher
+	SSE       *sse.Hub
 	templates map[string]*template.Template
 }
 
-func New(database *sql.DB, cfg *config.Config, templateFS fs.FS) *Handler {
+func New(database *sql.DB, cfg *config.Config, templateFS fs.FS, mailer *email.Mailer, webhookDispatcher *webhook.Dispatcher, sseHub *sse.Hub) *Handler {
 	funcMap := template.FuncMap{
 		"downloadURL": func(tokenID string) string {
 			return cfg.BaseURL + "/d/" + tokenID
@@ -128,6 +135,9 @@ func New(database *sql.DB, cfg *config.Config, templateFS fs.FS) *Handler {
 	return &Handler{
 		DB:        database,
 		Cfg:       cfg,
+		Mailer:    mailer,
+		Webhook:   webhookDispatcher,
+		SSE:       sseHub,
 		templates: templates,
 	}
 }
@@ -135,6 +145,8 @@ func New(database *sql.DB, cfg *config.Config, templateFS fs.FS) *Handler {
 type PageData struct {
 	Title         string
 	Authenticated bool
+	IsAdmin       bool
+	UserName      string
 	Flash         string
 	Error         string
 	Data          interface{}
@@ -152,4 +164,14 @@ func (h *Handler) render(w http.ResponseWriter, name string, data PageData) {
 		slog.Error("render template", "name", name, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
+}
+
+func (h *Handler) renderAuth(w http.ResponseWriter, r *http.Request, name, title string, data interface{}) {
+	h.render(w, name, PageData{
+		Title:         title,
+		Authenticated: true,
+		IsAdmin:       auth.IsAdmin(r.Context()),
+		UserName:      auth.NameFromContext(r.Context()),
+		Data:          data,
+	})
 }

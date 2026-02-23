@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,42 +22,64 @@ import (
 )
 
 func (h *Handler) AssetList(w http.ResponseWriter, r *http.Request) {
-	accountID := auth.AccountFromContext(r.Context())
-	assets, err := db.ListAssets(h.DB, accountID)
+	assets, err := db.ListAssets(h.DB)
 	if err != nil {
 		slog.Error("list assets", "error", err)
 		http.Error(w, "Internal error", 500)
 		return
 	}
-	h.render(w, "assets.html", PageData{
-		Title:         "Assets",
-		Authenticated: true,
-		Data:          assets,
-	})
+	h.renderAuth(w, r, "assets.html", "Assets", assets)
 }
 
 func (h *Handler) AssetUploadForm(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "asset_upload.html", PageData{Title: "Upload Asset", Authenticated: true})
+	h.renderAuth(w, r, "asset_upload.html", "Upload Assets", nil)
 }
 
 func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		h.renderAuth(w, r, "asset_upload.html", "Upload Assets", nil)
+		return
+	}
+
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
 		h.render(w, "asset_upload.html", PageData{
-			Title: "Upload Asset", Authenticated: true,
-			Error: "Failed to parse upload.",
+			Title: "Upload Assets", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
+			Error: "No files selected.",
 		})
 		return
 	}
 
-	file, header, err := r.FormFile("file")
-	if err != nil {
+	uploaded := 0
+	var lastErr string
+	for _, fh := range files {
+		if err := h.processOneUpload(accountID, fh); err != nil {
+			slog.Warn("upload failed", "file", fh.Filename, "error", err)
+			lastErr = fmt.Sprintf("Failed to upload %s: %v", fh.Filename, err)
+		} else {
+			uploaded++
+		}
+	}
+
+	if uploaded == 0 && lastErr != "" {
 		h.render(w, "asset_upload.html", PageData{
-			Title: "Upload Asset", Authenticated: true,
-			Error: "No file selected.",
+			Title: "Upload Assets", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
+			Error: lastErr,
 		})
 		return
+	}
+
+	http.Redirect(w, r, "/assets", http.StatusSeeOther)
+}
+
+func (h *Handler) processOneUpload(accountID string, header *multipart.FileHeader) error {
+	file, err := header.Open()
+	if err != nil {
+		return err
 	}
 	defer file.Close()
 
@@ -87,11 +110,7 @@ func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !found {
-			h.render(w, "asset_upload.html", PageData{
-				Title: "Upload Asset", Authenticated: true,
-				Error: fmt.Sprintf("Unsupported file type: %s", mimeType),
-			})
-			return
+			return fmt.Errorf("unsupported file type: %s", mimeType)
 		}
 	}
 
@@ -100,18 +119,15 @@ func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
 
 	assetDir := filepath.Join(h.Cfg.DataDir, "originals", assetID)
 	if err := os.MkdirAll(assetDir, 0755); err != nil {
-		slog.Error("create asset dir", "error", err)
-		http.Error(w, "Internal error", 500)
-		return
+		return fmt.Errorf("create asset dir: %w", err)
 	}
 
 	srcPath := filepath.Join(assetDir, "source"+ext)
 
 	dst, err := os.Create(srcPath)
 	if err != nil {
-		slog.Error("create file", "error", err)
-		http.Error(w, "Internal error", 500)
-		return
+		os.RemoveAll(assetDir)
+		return fmt.Errorf("create file: %w", err)
 	}
 
 	hasher := sha256.New()
@@ -119,9 +135,7 @@ func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
 	dst.Close()
 	if err != nil {
 		os.RemoveAll(assetDir)
-		slog.Error("write file", "error", err)
-		http.Error(w, "Internal error", 500)
-		return
+		return fmt.Errorf("write file: %w", err)
 	}
 
 	sha256Hex := hex.EncodeToString(hasher.Sum(nil))
@@ -181,12 +195,10 @@ func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
 
 	if err := db.CreateAsset(h.DB, asset); err != nil {
 		os.RemoveAll(assetDir)
-		slog.Error("insert asset", "error", err)
-		http.Error(w, "Internal error", 500)
-		return
+		return fmt.Errorf("insert asset: %w", err)
 	}
 
-	http.Redirect(w, r, "/assets", http.StatusSeeOther)
+	return nil
 }
 
 func (h *Handler) AssetThumbnail(w http.ResponseWriter, r *http.Request) {
@@ -204,7 +216,7 @@ func (h *Handler) AssetDelete(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
 	asset, err := db.GetAsset(h.DB, id)
-	if err != nil || asset == nil || asset.AccountID != accountID {
+	if err != nil || asset == nil || (asset.AccountID != accountID && !auth.IsAdmin(r.Context())) {
 		http.NotFound(w, r)
 		return
 	}

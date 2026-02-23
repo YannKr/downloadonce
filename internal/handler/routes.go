@@ -25,10 +25,13 @@ func (h *Handler) Routes(staticFS fs.FS) chi.Router {
 	r.Post("/login", h.LoginSubmit)
 	r.Get("/setup", h.SetupForm)
 	r.Post("/setup", h.SetupSubmit)
+	r.Get("/register", h.RegisterForm)
+	r.Post("/register", h.RegisterSubmit)
 
 	// Public download routes
 	r.Get("/d/{token}", h.DownloadPage)
 	r.Get("/d/{token}/file", h.DownloadFile)
+	r.Get("/d/{token}/events", h.TokenSSE)
 
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
@@ -58,10 +61,28 @@ func (h *Handler) Routes(staticFS fs.FS) chi.Router {
 		r.Get("/campaigns/{id}", h.CampaignDetail)
 		r.Post("/campaigns/{id}/publish", h.CampaignPublish)
 		r.Post("/campaigns/{id}/tokens/{tokenID}/revoke", h.TokenRevoke)
+		r.Get("/campaigns/{id}/events", h.CampaignSSE)
 
 		r.Get("/detect", h.DetectForm)
 		r.Post("/detect", h.DetectSubmit)
 		r.Get("/detect/{id}", h.DetectResult)
+
+		r.Get("/settings", h.SettingsPage)
+		r.Post("/settings/apikeys", h.APIKeyCreate)
+		r.Post("/settings/apikeys/{id}/delete", h.APIKeyDelete)
+		r.Post("/settings/webhooks", h.WebhookCreate)
+		r.Post("/settings/webhooks/{id}/delete", h.WebhookDelete)
+
+		// Admin routes
+		r.Route("/admin", func(r chi.Router) {
+			r.Use(h.RequireAdmin)
+			r.Get("/users", h.AdminUsers)
+			r.Post("/users", h.AdminCreateUser)
+			r.Post("/users/{id}/toggle", h.AdminToggleUser)
+			r.Post("/users/{id}/delete", h.AdminDeleteUser)
+			r.Post("/users/{id}/promote", h.AdminPromoteUser)
+			r.Get("/campaigns", h.AdminCampaigns)
+		})
 	})
 
 	return r

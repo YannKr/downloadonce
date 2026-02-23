@@ -17,11 +17,11 @@ func CreateAsset(database *sql.DB, a *model.Asset) error {
 	return err
 }
 
-func ListAssets(database *sql.DB, accountID string) ([]model.Asset, error) {
+func ListAssets(database *sql.DB) ([]model.Asset, error) {
 	rows, err := database.Query(
 		`SELECT id, account_id, title, asset_type, original_path,
 		  file_size_bytes, sha256_original, mime_type, duration_secs, resolution_w, resolution_h, created_at
-		 FROM assets WHERE account_id = ? ORDER BY created_at DESC`, accountID,
+		 FROM assets ORDER BY created_at DESC`,
 	)
 	if err != nil {
 		return nil, err
