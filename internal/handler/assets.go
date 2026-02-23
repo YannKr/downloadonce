@@ -45,7 +45,7 @@ func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
 
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
-		h.render(w, "asset_upload.html", PageData{
+		h.render(w, r, "asset_upload.html", PageData{
 			Title: "Upload Assets", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: "No files selected.",
@@ -65,7 +65,7 @@ func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if uploaded == 0 && lastErr != "" {
-		h.render(w, "asset_upload.html", PageData{
+		h.render(w, r, "asset_upload.html", PageData{
 			Title: "Upload Assets", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: lastErr,
@@ -224,5 +224,8 @@ func (h *Handler) AssetDelete(w http.ResponseWriter, r *http.Request) {
 	db.DeleteAsset(h.DB, id)
 	os.RemoveAll(filepath.Join(h.Cfg.DataDir, "originals", id))
 
+	db.InsertAuditLog(h.DB, auth.AccountFromContext(r.Context()), "asset_deleted", "asset", id, "", r.RemoteAddr)
+
+	setFlash(w, "Asset deleted.")
 	http.Redirect(w, r, "/assets", http.StatusSeeOther)
 }

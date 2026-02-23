@@ -2,6 +2,7 @@
 <h1>New Campaign</h1>
 
 <form method="POST" action="/campaigns/new">
+  {{.CSRFField}}
   <div class="form-group">
     <label for="name">Campaign Name</label>
     <input type="text" id="name" name="name" required placeholder="e.g. Q1 Review Screening" value="{{.Data.Name}}">

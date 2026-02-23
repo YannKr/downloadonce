@@ -22,7 +22,7 @@ func (h *Handler) DetectSubmit(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
 	if err := r.ParseMultipartForm(h.Cfg.MaxUploadBytes); err != nil {
-		h.render(w, "detect.html", PageData{
+		h.render(w, r, "detect.html", PageData{
 			Title: "Detect Watermark", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: "Failed to parse upload.",
@@ -32,7 +32,7 @@ func (h *Handler) DetectSubmit(w http.ResponseWriter, r *http.Request) {
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		h.render(w, "detect.html", PageData{
+		h.render(w, r, "detect.html", PageData{
 			Title: "Detect Watermark", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: "No file selected.",
@@ -48,7 +48,7 @@ func (h *Handler) DetectSubmit(w http.ResponseWriter, r *http.Request) {
 		".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".webm": true,
 	}
 	if !allowed[ext] {
-		h.render(w, "detect.html", PageData{
+		h.render(w, r, "detect.html", PageData{
 			Title: "Detect Watermark", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: "Unsupported file type. Please upload an image (JPEG/PNG/WebP) or video (MP4/MKV/AVI/MOV/WebM).",

@@ -5,6 +5,7 @@
 
 <h2>Create User</h2>
 <form method="POST" action="/admin/users" class="form-inline" style="margin-bottom:2rem">
+  {{.CSRFField}}
   <div class="form-group">
     <input type="text" name="name" placeholder="Name" required>
   </div>
@@ -45,12 +46,15 @@
       <td>{{formatTime .CreatedAt}}</td>
       <td>
         <form method="POST" action="/admin/users/{{.ID}}/promote" style="display:inline">
+          {{$.CSRFField}}
           <button type="submit" class="btn btn-sm">{{if eq .Role "admin"}}Demote{{else}}Promote{{end}}</button>
         </form>
         <form method="POST" action="/admin/users/{{.ID}}/toggle" style="display:inline">
+          {{$.CSRFField}}
           <button type="submit" class="btn btn-sm">{{if .Enabled}}Disable{{else}}Enable{{end}}</button>
         </form>
         <form method="POST" action="/admin/users/{{.ID}}/delete" style="display:inline" onsubmit="return confirm('Delete this user?')">
+          {{$.CSRFField}}
           <button type="submit" class="btn btn-sm btn-danger">Delete</button>
         </form>
       </td>

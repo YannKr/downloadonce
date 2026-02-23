@@ -1,0 +1,70 @@
+{{define "content"}}
+<div class="page-header">
+  <h1>Analytics</h1>
+</div>
+
+<form method="GET" action="/analytics" class="form-card">
+  <div class="grid-2">
+    <div class="form-group">
+      <label for="start">Start Date</label>
+      <input type="date" id="start" name="start" value="{{.Data.Start}}">
+    </div>
+    <div class="form-group">
+      <label for="end">End Date</label>
+      <input type="date" id="end" name="end" value="{{.Data.End}}">
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">Filter</button>
+  <a href="/analytics/export?start={{.Data.Start}}&end={{.Data.End}}" class="btn">Export CSV</a>
+</form>
+
+<h2>Total Downloads: {{.Data.TotalDownloads}}</h2>
+
+<h3>Daily Downloads</h3>
+{{if .Data.DailyCounts}}
+<table>
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Data.DailyCounts}}
+    <tr>
+      <td>{{.Date}}</td>
+      <td>{{.Count}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="text-muted">No downloads in this date range.</p>
+{{end}}
+
+<h3>Campaign Breakdown</h3>
+{{if .Data.CampaignAnalytics}}
+<table>
+  <thead>
+    <tr>
+      <th>Campaign</th>
+      <th>Downloads</th>
+      <th>Unique Recipients</th>
+      <th>Last Download</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Data.CampaignAnalytics}}
+    <tr>
+      <td>{{.CampaignName}}</td>
+      <td>{{.TotalDownloads}}</td>
+      <td>{{.UniqueRecipients}}</td>
+      <td>{{formatTimePtr .LastDownload}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="text-muted">No campaign data in this date range.</p>
+{{end}}
+{{end}}

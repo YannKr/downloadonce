@@ -36,7 +36,7 @@ func (h *Handler) RecipientCreate(w http.ResponseWriter, r *http.Request) {
 
 	if name == "" || email == "" {
 		recipients, _ := db.ListRecipients(h.DB)
-		h.render(w, "recipients.html", PageData{
+		h.render(w, r, "recipients.html", PageData{
 			Title: "Recipients", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: "Name and email are required.",
@@ -55,7 +55,7 @@ func (h *Handler) RecipientCreate(w http.ResponseWriter, r *http.Request) {
 	if err := db.CreateRecipient(h.DB, recipient); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			recipients, _ := db.ListRecipients(h.DB)
-			h.render(w, "recipients.html", PageData{
+			h.render(w, r, "recipients.html", PageData{
 				Title: "Recipients", Authenticated: true,
 				IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 				Error: "A recipient with this email already exists.",
@@ -67,6 +67,9 @@ func (h *Handler) RecipientCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	db.InsertAuditLog(h.DB, auth.AccountFromContext(r.Context()), "recipient_created", "recipient", recipient.ID, recipient.Email, r.RemoteAddr)
+
+	setFlash(w, "Recipient created.")
 	http.Redirect(w, r, "/recipients", http.StatusSeeOther)
 }
 
@@ -121,7 +124,7 @@ func (h *Handler) RecipientImport(w http.ResponseWriter, r *http.Request) {
 		flash += strings.Replace("N skipped", "N", strings.TrimSpace(itoa(skipped)), 1)
 	}
 
-	h.render(w, "recipients.html", PageData{
+	h.render(w, r, "recipients.html", PageData{
 		Title: "Recipients", Authenticated: true,
 		IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 		Flash: flash,
@@ -140,6 +143,8 @@ func (h *Handler) RecipientDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db.DeleteRecipient(h.DB, id)
+	db.InsertAuditLog(h.DB, auth.AccountFromContext(r.Context()), "recipient_deleted", "recipient", id, "", r.RemoteAddr)
+	setFlash(w, "Recipient deleted.")
 	http.Redirect(w, r, "/recipients", http.StatusSeeOther)
 }
 

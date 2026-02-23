@@ -6,6 +6,7 @@
     {{if eq .Data.Campaign.State "DRAFT"}}
     <form method="POST" action="/campaigns/{{.Data.Campaign.ID}}/publish" style="display:inline"
           onsubmit="return confirm('Publish this campaign? Download links will be emailed to all recipients.')">
+      {{.CSRFField}}
       <button type="submit" class="btn btn-primary">Publish</button>
     </form>
     {{end}}
@@ -100,6 +101,7 @@
         {{if eq .State "ACTIVE"}}
         <form method="POST" action="/campaigns/{{$.Data.Campaign.ID}}/tokens/{{.ID}}/revoke"
               onsubmit="return confirm('Revoke this token?')">
+          {{$.CSRFField}}
           <button type="submit" class="btn btn-sm btn-danger">Revoke</button>
         </form>
         {{end}}

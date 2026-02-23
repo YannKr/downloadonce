@@ -2,6 +2,7 @@
 <h1>Upload Assets</h1>
 
 <form method="POST" action="/assets/upload" enctype="multipart/form-data">
+  {{.CSRFField}}
   <div class="form-group">
     <label for="files">Files (video or image — select multiple)</label>
     <input type="file" id="files" name="files" required accept="video/*,image/*" multiple>

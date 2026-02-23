@@ -3,12 +3,14 @@ package handler
 import (
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gorilla/csrf"
 )
 
-func (h *Handler) Routes(staticFS fs.FS) chi.Router {
+func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -16,17 +18,42 @@ func (h *Handler) Routes(staticFS fs.FS) chi.Router {
 	r.Use(middleware.RealIP)
 	r.Use(h.RequireSetup)
 
+	// CSRF protection — exempt API key (Bearer) requests
+	csrfProtect := csrf.Protect(
+		[]byte(h.Cfg.SessionSecret),
+		csrf.Secure(strings.HasPrefix(h.Cfg.BaseURL, "https")),
+		csrf.Path("/"),
+		csrf.SameSite(csrf.SameSiteLaxMode),
+	)
+	r.Use(func(next http.Handler) http.Handler {
+		protected := csrfProtect(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.Header.Get("Authorization"), "Bearer do_") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			protected.ServeHTTP(w, r)
+		})
+	})
+
 	// Static files
 	r.Handle("/static/*", http.StripPrefix("/static/",
 		http.FileServer(http.FS(staticFS))))
 
-	// Public routes
-	r.Get("/login", h.LoginForm)
-	r.Post("/login", h.LoginSubmit)
-	r.Get("/setup", h.SetupForm)
-	r.Post("/setup", h.SetupSubmit)
-	r.Get("/register", h.RegisterForm)
-	r.Post("/register", h.RegisterSubmit)
+	// Public routes (rate-limited)
+	r.Group(func(r chi.Router) {
+		r.Use(authRL.Middleware)
+		r.Get("/login", h.LoginForm)
+		r.Post("/login", h.LoginSubmit)
+		r.Get("/setup", h.SetupForm)
+		r.Post("/setup", h.SetupSubmit)
+		r.Get("/register", h.RegisterForm)
+		r.Post("/register", h.RegisterSubmit)
+		r.Get("/forgot-password", h.ForgotPasswordForm)
+		r.Post("/forgot-password", h.ForgotPasswordSubmit)
+		r.Get("/reset-password", h.ResetPasswordForm)
+		r.Post("/reset-password", h.ResetPasswordSubmit)
+	})
 
 	// Public download routes
 	r.Get("/d/{token}", h.DownloadPage)
@@ -67,7 +94,11 @@ func (h *Handler) Routes(staticFS fs.FS) chi.Router {
 		r.Post("/detect", h.DetectSubmit)
 		r.Get("/detect/{id}", h.DetectResult)
 
+		r.Get("/analytics", h.Analytics)
+		r.Get("/analytics/export", h.AnalyticsExport)
+
 		r.Get("/settings", h.SettingsPage)
+		r.Post("/settings/notify", h.NotifyOnDownloadUpdate)
 		r.Post("/settings/apikeys", h.APIKeyCreate)
 		r.Post("/settings/apikeys/{id}/delete", h.APIKeyDelete)
 		r.Post("/settings/webhooks", h.WebhookCreate)
@@ -82,6 +113,7 @@ func (h *Handler) Routes(staticFS fs.FS) chi.Router {
 			r.Post("/users/{id}/delete", h.AdminDeleteUser)
 			r.Post("/users/{id}/promote", h.AdminPromoteUser)
 			r.Get("/campaigns", h.AdminCampaigns)
+			r.Get("/audit", h.AdminAudit)
 		})
 	})
 

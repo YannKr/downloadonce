@@ -2,6 +2,7 @@
 <div class="auth-form">
   <h1>Login</h1>
   <form method="POST" action="/login">
+    {{.CSRFField}}
     <div class="form-group">
       <label for="email">Email</label>
       <input type="email" id="email" name="email" required autofocus value="{{if .Data}}{{index .Data "Email"}}{{end}}">
@@ -12,8 +13,9 @@
     </div>
     <button type="submit" class="btn btn-primary">Login</button>
   </form>
+  <p style="margin-top:0.5rem;text-align:center"><a href="/forgot-password">Forgot password?</a></p>
   {{if .Data}}{{if index .Data "AllowRegistration"}}
-  <p style="margin-top:1rem;text-align:center">Don't have an account? <a href="/register">Register</a></p>
+  <p style="margin-top:0.5rem;text-align:center">Don't have an account? <a href="/register">Register</a></p>
   {{end}}{{end}}
 </div>
 {{end}}

@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -27,13 +26,13 @@ type downloadPageData struct {
 func (h *Handler) DownloadPage(w http.ResponseWriter, r *http.Request) {
 	tokenStr := chi.URLParam(r, "token")
 	if _, err := uuid.Parse(tokenStr); err != nil {
-		h.render(w, "download_expired.html", PageData{Title: "Not Found"})
+		h.render(w, r, "download_expired.html", PageData{Title: "Not Found"})
 		return
 	}
 
 	token, err := db.GetToken(h.DB, tokenStr)
 	if err != nil || token == nil {
-		h.render(w, "download_expired.html", PageData{Title: "Not Found"})
+		h.render(w, r, "download_expired.html", PageData{Title: "Not Found"})
 		return
 	}
 
@@ -42,7 +41,7 @@ func (h *Handler) DownloadPage(w http.ResponseWriter, r *http.Request) {
 		// On-demand watermarking: enqueue job if not already running
 		campaign, _ := db.GetCampaign(h.DB, token.CampaignID)
 		if campaign == nil || campaign.State == "DRAFT" {
-			h.render(w, "download_preparing.html", PageData{
+			h.render(w, r, "download_preparing.html", PageData{
 				Title: "Not Ready",
 				Data:  map[string]interface{}{"TokenID": token.ID, "Progress": 0},
 			})
@@ -51,7 +50,7 @@ func (h *Handler) DownloadPage(w http.ResponseWriter, r *http.Request) {
 
 		asset, _ := db.GetAsset(h.DB, campaign.AssetID)
 		if asset == nil {
-			h.render(w, "download_expired.html", PageData{Title: "Error"})
+			h.render(w, r, "download_expired.html", PageData{Title: "Error"})
 			return
 		}
 
@@ -78,23 +77,23 @@ func (h *Handler) DownloadPage(w http.ResponseWriter, r *http.Request) {
 			progress = existingJob.Progress
 		}
 
-		h.render(w, "download_preparing.html", PageData{
+		h.render(w, r, "download_preparing.html", PageData{
 			Title: "Preparing",
 			Data:  map[string]interface{}{"TokenID": token.ID, "Progress": progress},
 		})
 		return
 	case "CONSUMED":
-		h.render(w, "download_expired.html", PageData{Title: "Link Used"})
+		h.render(w, r, "download_expired.html", PageData{Title: "Link Used"})
 		return
 	case "EXPIRED":
-		h.render(w, "download_expired.html", PageData{Title: "Link Expired"})
+		h.render(w, r, "download_expired.html", PageData{Title: "Link Expired"})
 		return
 	}
 
 	// Check expiry
 	if token.ExpiresAt != nil && token.ExpiresAt.Before(time.Now()) {
 		db.ExpireToken(h.DB, token.ID)
-		h.render(w, "download_expired.html", PageData{Title: "Link Expired"})
+		h.render(w, r, "download_expired.html", PageData{Title: "Link Expired"})
 		return
 	}
 
@@ -102,7 +101,7 @@ func (h *Handler) DownloadPage(w http.ResponseWriter, r *http.Request) {
 	asset, _ := db.GetAsset(h.DB, campaign.AssetID)
 	recipient, _ := db.GetRecipient(h.DB, token.RecipientID)
 
-	h.render(w, "download.html", PageData{
+	h.render(w, r, "download.html", PageData{
 		Title: campaign.Name,
 		Data: downloadPageData{
 			Campaign:  campaign,
@@ -159,20 +158,40 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	db.InsertDownloadEvent(h.DB, event)
 
 	// Dispatch download webhook
+	recipient, _ := db.GetRecipient(h.DB, token.RecipientID)
 	if h.Webhook != nil {
-		recipient, _ := db.GetRecipient(h.DB, token.RecipientID)
 		webhookData := map[string]interface{}{
-			"token_id":     token.ID,
-			"campaign_id":  token.CampaignID,
+			"token_id":      token.ID,
+			"campaign_id":   token.CampaignID,
 			"campaign_name": campaign.Name,
-			"recipient_id": token.RecipientID,
-			"ip_address":   event.IPAddress,
+			"recipient_id":  token.RecipientID,
+			"ip_address":    event.IPAddress,
 		}
 		if recipient != nil {
 			webhookData["recipient_name"] = recipient.Name
 			webhookData["recipient_email"] = recipient.Email
 		}
 		h.Webhook.Dispatch(campaign.AccountID, "download", webhookData)
+	}
+
+	// Send download notification email to campaign owner if enabled
+	if h.Mailer != nil && h.Mailer.Enabled() {
+		owner, _ := db.GetAccountByID(h.DB, campaign.AccountID)
+		if owner != nil && owner.NotifyOnDownload {
+			recipientName := ""
+			recipientEmail := ""
+			if recipient != nil {
+				recipientName = recipient.Name
+				recipientEmail = recipient.Email
+			}
+			downloadTime := time.Now().UTC().Format("2006-01-02 15:04 UTC")
+			ipAddress := event.IPAddress
+			go func() {
+				if err := h.Mailer.SendDownloadNotification(owner.Email, owner.Name, campaign.Name, recipientName, recipientEmail, downloadTime, ipAddress); err != nil {
+					slog.Error("send download notification", "error", err)
+				}
+			}()
+		}
 	}
 
 	filePath := filepath.Join(h.Cfg.DataDir, *token.WatermarkedPath)
@@ -212,9 +231,6 @@ func sanitizeFilename(name string) string {
 		"|", "_",
 	)
 	s := replacer.Replace(name)
-	if _, err := os.Stat("/dev/null"); err == nil {
-		// additional trimming if needed
-	}
 	if len(s) > 200 {
 		s = s[:200]
 	}

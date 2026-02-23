@@ -11,21 +11,29 @@ import (
 )
 
 type settingsData struct {
-	APIKeys     []model.APIKey
-	Webhooks    []model.Webhook
-	NewAPIKey   string // shown once after creation
-	SMTPEnabled bool
+	APIKeys          []model.APIKey
+	Webhooks         []model.Webhook
+	NewAPIKey        string // shown once after creation
+	SMTPEnabled      bool
+	NotifyOnDownload bool
 }
 
 func (h *Handler) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 	keys, _ := db.ListAPIKeys(h.DB, accountID)
 	webhooks, _ := db.ListWebhooks(h.DB, accountID)
+	account, _ := db.GetAccountByID(h.DB, accountID)
+
+	notifyOn := false
+	if account != nil {
+		notifyOn = account.NotifyOnDownload
+	}
 
 	h.renderAuth(w, r, "settings.html", "Settings", settingsData{
-		APIKeys:     keys,
-		Webhooks:    webhooks,
-		SMTPEnabled: h.Cfg.SMTPHost != "",
+		APIKeys:          keys,
+		Webhooks:         webhooks,
+		SMTPEnabled:      h.Cfg.SMTPHost != "",
+		NotifyOnDownload: notifyOn,
 	})
 }
 
@@ -63,11 +71,13 @@ func (h *Handler) APIKeyCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	db.InsertAuditLog(h.DB, accountID, "api_key_created", "api_key", apiKey.ID, name, r.RemoteAddr)
+
 	// Show the key once
 	keys, _ := db.ListAPIKeys(h.DB, accountID)
 	webhooks, _ := db.ListWebhooks(h.DB, accountID)
 
-	h.render(w, "settings.html", PageData{
+	h.render(w, r, "settings.html", PageData{
 		Title:         "Settings",
 		Authenticated: true,
 		IsAdmin:       auth.IsAdmin(r.Context()),
@@ -86,6 +96,8 @@ func (h *Handler) APIKeyDelete(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 	db.DeleteAPIKey(h.DB, id, accountID)
+	db.InsertAuditLog(h.DB, accountID, "api_key_deleted", "api_key", id, "", r.RemoteAddr)
+	setFlash(w, "API key deleted.")
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
@@ -129,6 +141,9 @@ func (h *Handler) WebhookCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	db.InsertAuditLog(h.DB, accountID, "webhook_created", "webhook", wh.ID, url, r.RemoteAddr)
+
+	setFlash(w, "Webhook created.")
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
@@ -136,5 +151,15 @@ func (h *Handler) WebhookDelete(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 	db.DeleteWebhook(h.DB, id, accountID)
+	db.InsertAuditLog(h.DB, accountID, "webhook_deleted", "webhook", id, "", r.RemoteAddr)
+	setFlash(w, "Webhook deleted.")
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+}
+
+func (h *Handler) NotifyOnDownloadUpdate(w http.ResponseWriter, r *http.Request) {
+	accountID := auth.AccountFromContext(r.Context())
+	notify := r.FormValue("notify_on_download") == "1"
+	db.UpdateAccountNotifyOnDownload(h.DB, accountID, notify)
+	setFlash(w, "Notification preference saved.")
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }

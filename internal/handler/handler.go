@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gorilla/csrf"
 	"github.com/ypk/downloadonce/internal/auth"
 	"github.com/ypk/downloadonce/internal/config"
 	"github.com/ypk/downloadonce/internal/email"
@@ -149,15 +150,22 @@ type PageData struct {
 	UserName      string
 	Flash         string
 	Error         string
+	CSRFField     template.HTML
 	Data          interface{}
 }
 
-func (h *Handler) render(w http.ResponseWriter, name string, data PageData) {
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data PageData) {
 	t, ok := h.templates[name]
 	if !ok {
 		slog.Error("template not found", "name", name)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
+	}
+	if r != nil {
+		data.CSRFField = csrf.TemplateField(r)
+		if data.Flash == "" {
+			data.Flash = getFlash(w, r)
+		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, "layout.html", data); err != nil {
@@ -167,11 +175,37 @@ func (h *Handler) render(w http.ResponseWriter, name string, data PageData) {
 }
 
 func (h *Handler) renderAuth(w http.ResponseWriter, r *http.Request, name, title string, data interface{}) {
-	h.render(w, name, PageData{
+	h.render(w, r, name, PageData{
 		Title:         title,
 		Authenticated: true,
 		IsAdmin:       auth.IsAdmin(r.Context()),
 		UserName:      auth.NameFromContext(r.Context()),
 		Data:          data,
 	})
+}
+
+func setFlash(w http.ResponseWriter, message string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "downloadonce_flash",
+		Value:    message,
+		Path:     "/",
+		MaxAge:   10,
+		HttpOnly: true,
+	})
+}
+
+func getFlash(w http.ResponseWriter, r *http.Request) string {
+	c, err := r.Cookie("downloadonce_flash")
+	if err != nil {
+		return ""
+	}
+	// Clear the cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "downloadonce_flash",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+	return c.Value
 }

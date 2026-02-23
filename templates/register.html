@@ -2,6 +2,7 @@
 <div class="auth-form">
   <h1>Register</h1>
   <form method="POST" action="/register">
+    {{.CSRFField}}
     <div class="form-group">
       <label for="name">Name</label>
       <input type="text" id="name" name="name" required autofocus value="{{if .Data}}{{index .Data "Name"}}{{end}}">

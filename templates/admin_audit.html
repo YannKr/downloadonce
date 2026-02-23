@@ -1,0 +1,54 @@
+{{define "content"}}
+<div class="page-header">
+  <h1>Audit Log</h1>
+</div>
+
+<form method="GET" action="/admin/audit" style="margin-bottom:1rem;display:flex;gap:8px;align-items:center">
+  <select name="action" class="form-input" style="width:auto" onchange="this.form.submit()">
+    <option value="">All actions</option>
+    {{range .Data.Actions}}
+    <option value="{{.}}" {{if eq . $.Data.FilterAction}}selected{{end}}>{{.}}</option>
+    {{end}}
+  </select>
+</form>
+
+{{if .Data.Logs}}
+<table>
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Action</th>
+      <th>Target</th>
+      <th>Detail</th>
+      <th>IP</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Data.Logs}}
+    <tr>
+      <td>{{formatTime .CreatedAt}}</td>
+      <td>{{stateBadge .Action}}</td>
+      <td>{{.TargetType}} {{shortenID .TargetID}}</td>
+      <td class="text-truncate" style="max-width:300px">{{.Detail}}</td>
+      <td>{{.IPAddress}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+
+{{if .Data.Pagination}}
+<div style="display:flex;justify-content:center;gap:12px;margin:1rem 0">
+  {{if .Data.Pagination.HasPrev}}
+  <a href="?page={{.Data.Pagination.PrevPage}}{{if .Data.FilterAction}}&action={{.Data.FilterAction}}{{end}}" class="btn btn-secondary">Previous</a>
+  {{end}}
+  <span style="padding:8px">Page {{.Data.Pagination.Page}} of {{.Data.Pagination.TotalPages}}</span>
+  {{if .Data.Pagination.HasNext}}
+  <a href="?page={{.Data.Pagination.NextPage}}{{if .Data.FilterAction}}&action={{.Data.FilterAction}}{{end}}" class="btn btn-secondary">Next</a>
+  {{end}}
+</div>
+{{end}}
+
+{{else}}
+<p class="text-muted">No audit log entries.</p>
+{{end}}
+{{end}}

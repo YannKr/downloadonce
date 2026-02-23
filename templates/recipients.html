@@ -7,6 +7,7 @@
   <div>
     <h2>Add Recipient</h2>
     <form method="POST" action="/recipients">
+      {{.CSRFField}}
       <div class="form-group">
         <label for="name">Name</label>
         <input type="text" id="name" name="name" required value="{{.Data.FormName}}">
@@ -26,6 +27,7 @@
   <div>
     <h2>Bulk Import</h2>
     <form method="POST" action="/recipients/import">
+      {{.CSRFField}}
       <div class="form-group">
         <label for="bulk">One per line: Name, Email, Org (optional)</label>
         <textarea id="bulk" name="bulk" rows="6" placeholder="John Doe, john@example.com, Acme Corp&#10;Jane Smith, jane@example.com"></textarea>
@@ -54,6 +56,7 @@
       <td>{{.Org}}</td>
       <td>
         <form method="POST" action="/recipients/{{.ID}}/delete" onsubmit="return confirm('Delete this recipient?')">
+          {{$.CSRFField}}
           <button type="submit" class="btn btn-sm btn-danger">Delete</button>
         </form>
       </td>

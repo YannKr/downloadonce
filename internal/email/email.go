@@ -64,6 +64,53 @@ Recipients can now download their files using their unique download links.
 	return m.sendMultipart(to, subject, textBody, htmlBody)
 }
 
+func (m *Mailer) SendPasswordReset(to, name, resetURL string) error {
+	subject := "Reset your password"
+
+	textBody := fmt.Sprintf(`Hello %s,
+
+You requested a password reset. Click the link below to set a new password:
+
+%s
+
+This link is valid for 1 hour. If you did not request this, you can safely ignore this email.
+`, name, resetURL)
+
+	htmlBody := fmt.Sprintf(`<html><body>
+<p>Hello %s,</p>
+<p>You requested a password reset. Click the button below to set a new password:</p>
+<p><a href="%s" style="display:inline-block;padding:10px 24px;background:#4361ee;color:#fff;text-decoration:none;border-radius:4px;">Reset Password</a></p>
+<p style="color:#666;font-size:12px;">This link is valid for 1 hour. If you did not request this, you can safely ignore this email.</p>
+</body></html>`, name, resetURL)
+
+	return m.sendMultipart(to, subject, textBody, htmlBody)
+}
+
+func (m *Mailer) SendDownloadNotification(to, ownerName, campaignName, recipientName, recipientEmail, downloadTime, ipAddress string) error {
+	subject := fmt.Sprintf("Download: %s by %s", campaignName, recipientName)
+
+	textBody := fmt.Sprintf(`Hello %s,
+
+A file was downloaded from your campaign "%s".
+
+Recipient: %s (%s)
+Time: %s
+IP Address: %s
+`, ownerName, campaignName, recipientName, recipientEmail, downloadTime, ipAddress)
+
+	htmlBody := fmt.Sprintf(`<html><body>
+<p>Hello %s,</p>
+<p>A file was downloaded from your campaign "<strong>%s</strong>".</p>
+<table style="border-collapse:collapse;margin:12px 0">
+<tr><td style="padding:4px 12px 4px 0;color:#666">Recipient</td><td>%s (%s)</td></tr>
+<tr><td style="padding:4px 12px 4px 0;color:#666">Time</td><td>%s</td></tr>
+<tr><td style="padding:4px 12px 4px 0;color:#666">IP Address</td><td>%s</td></tr>
+</table>
+</body></html>`, ownerName, campaignName, recipientName, recipientEmail, downloadTime, ipAddress)
+
+	return m.sendMultipart(to, subject, textBody, htmlBody)
+}
+
 func (m *Mailer) sendMultipart(to, subject, textBody, htmlBody string) error {
 	if !m.Enabled() {
 		return nil

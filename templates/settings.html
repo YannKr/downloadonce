@@ -27,6 +27,7 @@
       <td>
         <form method="POST" action="/settings/apikeys/{{.ID}}/delete"
               onsubmit="return confirm('Delete this API key?')">
+          {{$.CSRFField}}
           <button type="submit" class="btn btn-sm btn-danger">Delete</button>
         </form>
       </td>
@@ -39,6 +40,7 @@
 {{end}}
 
 <form method="POST" action="/settings/apikeys" class="form-inline" style="margin-bottom:2rem">
+  {{.CSRFField}}
   <input type="text" name="name" placeholder="Key name (e.g. CI/CD)" class="form-input">
   <button type="submit" class="btn btn-primary">Create API Key</button>
 </form>
@@ -63,6 +65,7 @@
       <td>
         <form method="POST" action="/settings/webhooks/{{.ID}}/delete"
               onsubmit="return confirm('Delete this webhook?')">
+          {{$.CSRFField}}
           <button type="submit" class="btn btn-sm btn-danger">Delete</button>
         </form>
       </td>
@@ -75,6 +78,7 @@
 {{end}}
 
 <form method="POST" action="/settings/webhooks" style="margin-bottom:2rem">
+  {{.CSRFField}}
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <input type="url" name="url" placeholder="https://example.com/webhook" class="form-input" required style="flex:1;min-width:250px">
     <label class="checkbox-label"><input type="checkbox" name="events" value="download" checked> Download</label>
@@ -88,6 +92,14 @@
 <h2>Email Notifications</h2>
 {{if .Data.SMTPEnabled}}
 <p>SMTP is <span class="badge badge-green">configured</span>. Download link emails will be sent to recipients when campaigns are published.</p>
+<form method="POST" action="/settings/notify">
+  {{$.CSRFField}}
+  <label class="checkbox-label">
+    <input type="checkbox" name="notify_on_download" value="1" {{if .Data.NotifyOnDownload}}checked{{end}}>
+    Email me when a recipient downloads a file
+  </label>
+  <button type="submit" class="btn btn-secondary">Save</button>
+</form>
 {{else}}
 <p>SMTP is <span class="badge badge-gray">not configured</span>. Set <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASS</code>, and <code>SMTP_FROM</code> environment variables to enable email delivery.</p>
 {{end}}

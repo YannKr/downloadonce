@@ -30,6 +30,7 @@
       <td>{{formatTime .CreatedAt}}</td>
       <td>
         <form method="POST" action="/assets/{{.ID}}/delete" onsubmit="return confirm('Delete this asset?')">
+          {{$.CSRFField}}
           <button type="submit" class="btn btn-sm btn-danger">Delete</button>
         </form>
       </td>

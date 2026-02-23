@@ -3,6 +3,7 @@
 <p>Upload a suspected leaked file to identify the original recipient.</p>
 
 <form method="POST" action="/detect" enctype="multipart/form-data" class="form-card">
+  {{.CSRFField}}
   <div class="form-group">
     <label for="file">Select File</label>
     <input type="file" id="file" name="file" accept="image/*,video/*" required>

@@ -72,7 +72,7 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 		for _, rid := range recipientIDs {
 			selected[rid] = true
 		}
-		h.render(w, "campaign_new.html", PageData{
+		h.render(w, r, "campaign_new.html", PageData{
 			Title: "New Campaign", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
 			Error: "Asset, name, and at least one recipient are required.",
@@ -140,6 +140,7 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	db.InsertAuditLog(h.DB, accountID, "campaign_created", "campaign", campaign.ID, campaign.Name, r.RemoteAddr)
 	http.Redirect(w, r, "/campaigns/"+campaign.ID, http.StatusSeeOther)
 }
 
@@ -229,6 +230,7 @@ func (h *Handler) CampaignPublish(w http.ResponseWriter, r *http.Request) {
 
 	// Set campaign directly to READY — watermarking happens on-demand
 	db.SetCampaignPublishedReady(h.DB, id)
+	db.InsertAuditLog(h.DB, accountID, "campaign_published", "campaign", id, campaign.Name, r.RemoteAddr)
 
 	// Send download link emails if SMTP is configured
 	if h.Mailer != nil && h.Mailer.Enabled() {
@@ -242,6 +244,7 @@ func (h *Handler) CampaignPublish(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	setFlash(w, "Campaign published.")
 	http.Redirect(w, r, "/campaigns/"+id, http.StatusSeeOther)
 }
 
@@ -257,6 +260,7 @@ func (h *Handler) TokenRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db.ExpireToken(h.DB, tokenID)
-
+	db.InsertAuditLog(h.DB, accountID, "token_revoked", "token", tokenID, "", r.RemoteAddr)
+	setFlash(w, "Token revoked.")
 	http.Redirect(w, r, "/campaigns/"+campaignID, http.StatusSeeOther)
 }

@@ -3,6 +3,7 @@
   <h1>Create Admin Account</h1>
   <p>Welcome to DownloadOnce. Create your admin account to get started.</p>
   <form method="POST" action="/setup">
+    {{.CSRFField}}
     <div class="form-group">
       <label for="name">Name</label>
       <input type="text" id="name" name="name" required autofocus value="{{if .Data}}{{index .Data "Name"}}{{end}}">

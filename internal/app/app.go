@@ -95,9 +95,13 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 
+	// Rate limiter for auth endpoints: 5 requests/minute, burst of 5
+	authRL := handler.NewRateLimiter(5.0/60.0, 5)
+	defer authRL.Stop()
+
 	// Build handler and routes
 	h := handler.New(database, cfg, templateFS, mailer, webhookDispatcher, sseHub)
-	router := h.Routes(staticFS)
+	router := h.Routes(staticFS, authRL)
 
 	srv := &http.Server{
 		Addr:    cfg.ListenAddr,
