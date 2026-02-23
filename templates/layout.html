@@ -1,0 +1,31 @@
+{{define "layout.html"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} - DownloadOnce</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{if .Authenticated}}
+  <nav class="nav">
+    <div class="nav-brand">DownloadOnce</div>
+    <div class="nav-links">
+      <a href="/dashboard">Dashboard</a>
+      <a href="/assets">Assets</a>
+      <a href="/campaigns">Campaigns</a>
+      <a href="/recipients">Recipients</a>
+      <a href="/detect">Detect</a>
+      <form method="POST" action="/logout" style="display:inline">
+        <button type="submit" class="btn-link">Logout</button>
+      </form>
+    </div>
+  </nav>
+  {{end}}
+  <main class="container">
+    {{if .Error}}<div class="alert alert-error">{{.Error}}</div>{{end}}
+    {{if .Flash}}<div class="alert alert-success">{{.Flash}}</div>{{end}}
+    {{template "content" .}}
+  </main>
+</body>
+</html>{{end}}

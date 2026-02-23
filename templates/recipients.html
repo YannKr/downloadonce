@@ -1,0 +1,67 @@
+{{define "content"}}
+<div class="page-header">
+  <h1>Recipients</h1>
+</div>
+
+<div class="grid-2">
+  <div>
+    <h2>Add Recipient</h2>
+    <form method="POST" action="/recipients">
+      <div class="form-group">
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" required value="{{.Data.FormName}}">
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required value="{{.Data.FormEmail}}">
+      </div>
+      <div class="form-group">
+        <label for="org">Organization (optional)</label>
+        <input type="text" id="org" name="org" value="{{.Data.FormOrg}}">
+      </div>
+      <button type="submit" class="btn btn-primary">Add</button>
+    </form>
+  </div>
+
+  <div>
+    <h2>Bulk Import</h2>
+    <form method="POST" action="/recipients/import">
+      <div class="form-group">
+        <label for="bulk">One per line: Name, Email, Org (optional)</label>
+        <textarea id="bulk" name="bulk" rows="6" placeholder="John Doe, john@example.com, Acme Corp&#10;Jane Smith, jane@example.com"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Import</button>
+    </form>
+  </div>
+</div>
+
+<h2>All Recipients</h2>
+{{if .Data.Recipients}}
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Email</th>
+      <th>Organization</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Data.Recipients}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td>{{.Email}}</td>
+      <td>{{.Org}}</td>
+      <td>
+        <form method="POST" action="/recipients/{{.ID}}/delete" onsubmit="return confirm('Delete this recipient?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="text-muted">No recipients yet.</p>
+{{end}}
+{{end}}

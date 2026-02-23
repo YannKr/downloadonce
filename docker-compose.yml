@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - data:/data
+    environment:
+      - DATA_DIR=/data
+      - BASE_URL=http://localhost:8080
+      - SESSION_SECRET=change-me-in-production
+      - LISTEN_ADDR=:8080
+      - WORKER_COUNT=2
+      - MAX_UPLOAD_BYTES=2147483648
+      - FONT_PATH=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+      - VENV_PATH=/opt/venv
+      - LOG_LEVEL=info
+    restart: unless-stopped
+
+  # Optional: reverse proxy with automatic HTTPS
+  # caddy:
+  #   image: caddy:2-alpine
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   depends_on:
+  #     - app
+
+volumes:
+  data:
+  # caddy_data:
+  # caddy_config:

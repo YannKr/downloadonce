@@ -1,0 +1,65 @@
+{{define "content"}}
+<h1>Dashboard</h1>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{.Data.TotalAssets}}</div>
+    <div class="stat-label">Assets</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{.Data.TotalCampaigns}}</div>
+    <div class="stat-label">Campaigns</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{.Data.TotalDownloads}}</div>
+    <div class="stat-label">Total Downloads</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div>
+    <h2>Recent Campaigns</h2>
+    {{if .Data.Campaigns}}
+    <table>
+      <thead>
+        <tr><th>Name</th><th>State</th><th>Recipients</th><th>Downloads</th></tr>
+      </thead>
+      <tbody>
+        {{range .Data.Campaigns}}
+        <tr>
+          <td><a href="/campaigns/{{.ID}}">{{.Name}}</a></td>
+          <td>{{stateBadge .State}}</td>
+          <td>{{.RecipientCount}}</td>
+          <td>{{.DownloadedCount}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="text-muted">No campaigns yet. <a href="/campaigns/new">Create one</a>.</p>
+    {{end}}
+  </div>
+
+  <div>
+    <h2>Recent Downloads</h2>
+    {{if .Data.Events}}
+    <table>
+      <thead>
+        <tr><th>Time</th><th>Campaign</th><th>IP</th></tr>
+      </thead>
+      <tbody>
+        {{range .Data.Events}}
+        <tr>
+          <td>{{formatTime .CreatedAt}}</td>
+          <td><a href="/campaigns/{{.CampaignID}}">{{shortenID .CampaignID}}</a></td>
+          <td>{{.IPAddress}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="text-muted">No downloads yet.</p>
+    {{end}}
+  </div>
+</div>
+{{end}}

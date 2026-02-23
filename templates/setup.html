@@ -1,0 +1,25 @@
+{{define "content"}}
+<div class="auth-form">
+  <h1>Create Admin Account</h1>
+  <p>Welcome to DownloadOnce. Create your admin account to get started.</p>
+  <form method="POST" action="/setup">
+    <div class="form-group">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" required autofocus value="{{if .Data}}{{index .Data "Name"}}{{end}}">
+    </div>
+    <div class="form-group">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" required value="{{if .Data}}{{index .Data "Email"}}{{end}}">
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required minlength="8">
+    </div>
+    <div class="form-group">
+      <label for="password_confirm">Confirm Password</label>
+      <input type="password" id="password_confirm" name="password_confirm" required minlength="8">
+    </div>
+    <button type="submit" class="btn btn-primary">Create Account</button>
+  </form>
+</div>
+{{end}}

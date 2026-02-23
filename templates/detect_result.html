@@ -1,0 +1,62 @@
+{{define "content"}}
+<h1>Detection Result</h1>
+
+{{if or (eq .Data.State "PENDING") (eq .Data.State "RUNNING")}}
+<meta http-equiv="refresh" content="3">
+<div class="alert alert-info">
+  Analyzing file... This page will refresh automatically.
+</div>
+<div class="progress-bar">
+  <div class="progress-fill" style="width: {{.Data.Progress}}%"></div>
+</div>
+
+{{else if eq .Data.State "FAILED"}}
+<div class="alert alert-error">
+  Detection failed: {{.Data.ErrorMessage}}
+</div>
+
+{{else if eq .Data.State "COMPLETED"}}
+  {{if .Data.ResultData}}
+    {{/* Parse result_data JSON inline using a script-free approach: display raw fields */}}
+    <div class="result-card" id="result" data-json="{{.Data.ResultData}}">
+    </div>
+    <script>
+    (function() {
+      var el = document.getElementById('result');
+      var data = JSON.parse(el.getAttribute('data-json'));
+      var html = '';
+      if (data.found) {
+        html += '<div class="alert alert-success"><strong>Watermark Detected — Recipient Identified</strong></div>';
+        html += '<table class="table"><tbody>';
+        html += '<tr><th>Recipient Name</th><td>' + esc(data.recipient_name) + '</td></tr>';
+        html += '<tr><th>Recipient Email</th><td>' + esc(data.recipient_email) + '</td></tr>';
+        if (data.recipient_org) {
+          html += '<tr><th>Organization</th><td>' + esc(data.recipient_org) + '</td></tr>';
+        }
+        html += '<tr><th>Campaign</th><td>' + esc(data.campaign_name) + '</td></tr>';
+        html += '<tr><th>Token ID</th><td><code>' + esc(data.token_id) + '</code></td></tr>';
+        html += '<tr><th>Payload</th><td><code>' + esc(data.payload_hex) + '</code></td></tr>';
+        html += '</tbody></table>';
+      } else {
+        html += '<div class="alert alert-error"><strong>No Match Found</strong></div>';
+        html += '<p>' + esc(data.message || 'No watermark detected in file.') + '</p>';
+        if (data.payload_hex) {
+          html += '<p>Raw payload: <code>' + esc(data.payload_hex) + '</code></p>';
+        }
+      }
+      el.innerHTML = html;
+      function esc(s) {
+        if (!s) return '';
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+      }
+    })();
+    </script>
+  {{else}}
+    <div class="alert alert-error">No result data available.</div>
+  {{end}}
+{{end}}
+
+<p style="margin-top: 2rem"><a href="/detect" class="btn">Analyze Another File</a></p>
+{{end}}

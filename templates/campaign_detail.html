@@ -1,0 +1,118 @@
+{{define "content"}}
+<div class="page-header">
+  <h1>{{.Data.Campaign.Name}}</h1>
+  <div>
+    {{stateBadge .Data.Campaign.State}}
+    {{if eq .Data.Campaign.State "DRAFT"}}
+    <form method="POST" action="/campaigns/{{.Data.Campaign.ID}}/publish" style="display:inline"
+          onsubmit="return confirm('Publish this campaign? This will start watermarking for all recipients.')">
+      <button type="submit" class="btn btn-primary">Publish</button>
+    </form>
+    {{end}}
+  </div>
+</div>
+
+{{if eq .Data.Campaign.State "PROCESSING"}}
+<meta http-equiv="refresh" content="5">
+<div class="alert alert-info">Watermarking in progress. This page will auto-refresh.</div>
+{{end}}
+
+<div class="detail-grid">
+  <div class="detail-item">
+    <span class="detail-label">Asset</span>
+    <span>{{.Data.Asset.OriginalName}} ({{.Data.Asset.AssetType}})</span>
+  </div>
+  <div class="detail-item">
+    <span class="detail-label">Recipients</span>
+    <span>{{.Data.Campaign.RecipientCount}}</span>
+  </div>
+  <div class="detail-item">
+    <span class="detail-label">Downloads</span>
+    <span>{{.Data.Campaign.DownloadedCount}}</span>
+  </div>
+  <div class="detail-item">
+    <span class="detail-label">Created</span>
+    <span>{{formatTime .Data.Campaign.CreatedAt}}</span>
+  </div>
+  {{if .Data.Campaign.ExpiresAt}}
+  <div class="detail-item">
+    <span class="detail-label">Expires</span>
+    <span>{{formatTimePtr .Data.Campaign.ExpiresAt}}</span>
+  </div>
+  {{end}}
+  {{if .Data.Campaign.MaxDownloads}}
+  <div class="detail-item">
+    <span class="detail-label">Max Downloads</span>
+    <span>{{derefInt .Data.Campaign.MaxDownloads}} per recipient</span>
+  </div>
+  {{end}}
+</div>
+
+<h2>Download Tokens</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Recipient</th>
+      <th>Email</th>
+      <th>State</th>
+      <th>Downloads</th>
+      <th>Link</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Data.Tokens}}
+    <tr>
+      <td>{{.RecipientName}}</td>
+      <td>{{.RecipientEmail}}</td>
+      <td>{{stateBadge .State}}</td>
+      <td>{{.DownloadCount}}</td>
+      <td>
+        {{if eq .State "ACTIVE"}}
+        <input type="text" value="{{$.Data.BaseURL}}/d/{{.ID}}" readonly class="url-input" onclick="this.select()">
+        {{else if eq .State "PENDING"}}
+          {{if eq $.Data.Campaign.State "DRAFT"}}
+        <span class="text-muted">Awaiting publish</span>
+          {{else}}
+        <span class="text-muted">Preparing...</span>
+          {{end}}
+        {{else}}
+        <span class="text-muted">--</span>
+        {{end}}
+      </td>
+      <td>
+        {{if eq .State "ACTIVE"}}
+        <form method="POST" action="/campaigns/{{$.Data.Campaign.ID}}/tokens/{{.ID}}/revoke"
+              onsubmit="return confirm('Revoke this token?')">
+          <button type="submit" class="btn btn-sm btn-danger">Revoke</button>
+        </form>
+        {{end}}
+      </td>
+    </tr>
+    {{if .DownloadEvents}}
+    <tr>
+      <td colspan="6">
+        <details>
+          <summary>Download history ({{len .DownloadEvents}})</summary>
+          <table class="subtable">
+            <thead><tr><th>Time</th><th>IP Address</th><th>User Agent</th></tr></thead>
+            <tbody>
+              {{range .DownloadEvents}}
+              <tr>
+                <td>{{formatTime .CreatedAt}}</td>
+                <td>{{.IPAddress}}</td>
+                <td class="text-truncate">{{.UserAgent}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </details>
+      </td>
+    </tr>
+    {{end}}
+    {{end}}
+  </tbody>
+</table>
+
+<a href="/campaigns" class="btn btn-secondary">Back to Campaigns</a>
+{{end}}

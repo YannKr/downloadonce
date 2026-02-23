@@ -1,0 +1,15 @@
+{{define "content"}}
+<meta http-equiv="refresh" content="5">
+<div class="download-page">
+  <div class="download-card">
+    <h1>Preparing Your Download</h1>
+    <p>Your file is being prepared. This page will automatically refresh.</p>
+    {{if .Data}}
+    <div class="progress-bar">
+      <div class="progress-fill" style="width: {{pct .Data.Completed .Data.Total}}%"></div>
+    </div>
+    <p class="text-muted">{{.Data.Completed}} / {{.Data.Total}} files processed</p>
+    {{end}}
+  </div>
+</div>
+{{end}}

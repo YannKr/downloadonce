@@ -1,0 +1,12 @@
+# IDE
+.vscode/
+.idea/
+
+# Go
+/downloadonce
+
+# Data
+/data/
+
+# OS
+.DS_Store

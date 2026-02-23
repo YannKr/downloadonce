@@ -1,0 +1,43 @@
+{{define "content"}}
+<div class="page-header">
+  <h1>Assets</h1>
+  <a href="/assets/upload" class="btn btn-primary">Upload Asset</a>
+</div>
+
+{{if .Data}}
+<table>
+  <thead>
+    <tr>
+      <th></th>
+      <th>Filename</th>
+      <th>Type</th>
+      <th>Size</th>
+      <th>Resolution</th>
+      <th>Duration</th>
+      <th>Uploaded</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Data}}
+    <tr>
+      <td><img src="/assets/{{.ID}}/thumb" class="thumb" alt=""></td>
+      <td>{{.OriginalName}}</td>
+      <td>{{.AssetType}}</td>
+      <td>{{formatBytes .FileSize}}</td>
+      <td>{{if .Width}}{{derefInt64 .Width}}x{{derefInt64 .Height}}{{end}}</td>
+      <td>{{formatDuration .Duration}}</td>
+      <td>{{formatTime .CreatedAt}}</td>
+      <td>
+        <form method="POST" action="/assets/{{.ID}}/delete" onsubmit="return confirm('Delete this asset?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="text-muted">No assets uploaded yet.</p>
+{{end}}
+{{end}}

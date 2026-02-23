@@ -1,0 +1,64 @@
+{{define "content"}}
+<h1>New Campaign</h1>
+
+<form method="POST" action="/campaigns/new">
+  <div class="form-group">
+    <label for="name">Campaign Name</label>
+    <input type="text" id="name" name="name" required placeholder="e.g. Q1 Review Screening" value="{{.Data.Name}}">
+  </div>
+
+  <div class="form-group">
+    <label for="asset_id">Asset</label>
+    <select id="asset_id" name="asset_id" required>
+      <option value="">-- Select an asset --</option>
+      {{range .Data.Assets}}
+      <option value="{{.ID}}" {{if eq .ID $.Data.AssetID}}selected{{end}}>{{.OriginalName}} ({{.AssetType}}, {{formatBytes .FileSize}})</option>
+      {{end}}
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>Recipients</label>
+    {{if .Data.Recipients}}
+    <div class="checkbox-group">
+      {{range .Data.Recipients}}
+      <label class="checkbox-label">
+        <input type="checkbox" name="recipient_ids" value="{{.ID}}" {{if index $.Data.SelectedIDs .ID}}checked{{end}}>
+        {{.Name}} &lt;{{.Email}}&gt;{{if .Org}} ({{.Org}}){{end}}
+      </label>
+      {{end}}
+    </div>
+    {{else}}
+    <p class="text-muted">No recipients. <a href="/recipients">Add some first</a>.</p>
+    {{end}}
+  </div>
+
+  <div class="form-row">
+    <div class="form-group">
+      <label for="max_downloads">Max Downloads per Recipient (optional)</label>
+      <input type="number" id="max_downloads" name="max_downloads" min="1" placeholder="Unlimited" value="{{.Data.MaxDownloads}}">
+    </div>
+    <div class="form-group">
+      <label for="expires_at">Expiry Date (optional)</label>
+      <input type="datetime-local" id="expires_at" name="expires_at" value="{{.Data.ExpiresAt}}">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Watermark Options</label>
+    <div class="checkbox-group">
+      <label class="checkbox-label">
+        <input type="checkbox" name="visible_wm" {{if .Data.VisibleWM}}checked{{end}}>
+        Visible watermark (text overlay on image/video)
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" name="invisible_wm" {{if .Data.InvisibleWM}}checked{{end}}>
+        Invisible watermark (DWT-DCT steganographic, survives JPEG re-compression)
+      </label>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Create Campaign</button>
+  <a href="/campaigns" class="btn btn-secondary">Cancel</a>
+</form>
+{{end}}

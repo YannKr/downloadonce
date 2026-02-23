@@ -1,0 +1,32 @@
+{{define "content"}}
+<div class="download-page">
+  <h1>{{.Data.Campaign.Name}}</h1>
+
+  <div class="download-card">
+    <div class="download-info">
+      <p>Prepared for: <strong>{{.Data.Recipient.Name}}</strong></p>
+      <p>File: {{.Data.Asset.OriginalName}} ({{formatBytes .Data.Asset.FileSize}})</p>
+      {{if .Data.Asset.Duration}}
+      <p>Duration: {{formatDuration .Data.Asset.Duration}}</p>
+      {{end}}
+      {{if .Data.Asset.Width}}
+      <p>Resolution: {{derefInt64 .Data.Asset.Width}}x{{derefInt64 .Data.Asset.Height}}</p>
+      {{end}}
+    </div>
+
+    <div class="fingerprint-notice">
+      This file contains a unique forensic watermark tied to your identity.
+      Unauthorized distribution can be traced back to you.
+    </div>
+
+    <a href="/d/{{.Data.Token.ID}}/file" class="btn btn-primary btn-lg">Download File</a>
+
+    {{if .Data.Token.MaxDownloads}}
+    <p class="text-muted">Downloads: {{.Data.Token.DownloadCount}} / {{derefInt .Data.Token.MaxDownloads}}</p>
+    {{end}}
+    {{if .Data.Token.ExpiresAt}}
+    <p class="text-muted">Expires: {{formatTimePtr .Data.Token.ExpiresAt}}</p>
+    {{end}}
+  </div>
+</div>
+{{end}}

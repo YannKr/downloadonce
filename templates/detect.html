@@ -1,0 +1,13 @@
+{{define "content"}}
+<h1>Detect Watermark</h1>
+<p>Upload a suspected leaked file to identify the original recipient.</p>
+
+<form method="POST" action="/detect" enctype="multipart/form-data" class="form-card">
+  <div class="form-group">
+    <label for="file">Select File</label>
+    <input type="file" id="file" name="file" accept="image/*,video/*" required>
+    <small class="text-muted">Supported: JPEG, PNG, WebP, MP4, MKV, AVI, MOV, WebM</small>
+  </div>
+  <button type="submit" class="btn btn-primary">Analyze File</button>
+</form>
+{{end}}
