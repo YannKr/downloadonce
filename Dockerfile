@@ -12,6 +12,8 @@ RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build \
 # Runtime stage
 FROM debian:trixie-slim
 
+# System tools only — no python3-opencv from apt (it drags in Qt5, Mesa,
+# GPU drivers, OpenMPI, GDAL, and 350+ packages we don't need).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     imagemagick \
@@ -20,12 +22,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
-    tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Python watermarking stack.
+# We install numpy, opencv-python-headless and PyWavelets first so that
+# invisible-watermark's --no-deps install can't accidentally pull in the
+# heavier opencv-python (GUI) variant or torch.
+# invisible-watermark bundles a RivaGAN backend that does a hard `import torch`
+# at module load time; we only use the DWT-DCT-SVD method so we stub it out.
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir \
-       invisible-watermark opencv-python-headless
+       numpy \
+       opencv-python-headless \
+       PyWavelets \
+    && /opt/venv/bin/pip install --no-cache-dir --no-deps invisible-watermark \
+    && /opt/venv/bin/python3 -c "\
+import glob; \
+[open(f,'w').write('class RivaWatermark:\n    def __init__(self,*a,**k): raise RuntimeError(\"RivaGAN requires torch\")\n') \
+ for f in glob.glob('/opt/venv/lib/python*/site-packages/imwatermark/rivaGan.py')]" \
+    && find /opt/venv -name "*.pyc" -delete \
+    && find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; true
 
 COPY --from=builder /downloadonce /usr/local/bin/downloadonce
 
