@@ -2,9 +2,11 @@ package db
 
 import (
 	"database/sql"
+	"log/slog"
 	"time"
 
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/google/uuid"
 )
 
 func CreateCampaign(database *sql.DB, c *model.Campaign) error {
@@ -190,4 +192,46 @@ func ExpireCampaignAndTokens(database *sql.DB, campaignID string) error {
 	}
 	_, err = database.Exec(`UPDATE download_tokens SET state = 'EXPIRED' WHERE campaign_id = ? AND state IN ('PENDING', 'ACTIVE')`, campaignID)
 	return err
+}
+
+// CloneCampaign creates a new DRAFT campaign and its PENDING tokens inside a
+// single transaction.
+func CloneCampaign(database *sql.DB, newCampaign *model.Campaign, recipientIDs []string) (skipped int, err error) {
+	tx, err := database.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var expiresAt *string
+	if newCampaign.ExpiresAt != nil {
+		s := newCampaign.ExpiresAt.UTC().Format(time.RFC3339)
+		expiresAt = &s
+	}
+
+	_, err = tx.Exec(
+		`INSERT INTO campaigns (id, account_id, asset_id, name, max_downloads, expires_at, visible_wm, invisible_wm, state)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')`,
+		newCampaign.ID, newCampaign.AccountID, newCampaign.AssetID,
+		newCampaign.Name, newCampaign.MaxDownloads, expiresAt,
+		boolToInt(newCampaign.VisibleWM), boolToInt(newCampaign.InvisibleWM),
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	for _, rid := range recipientIDs {
+		tokenID := uuid.New().String()
+		_, terr := tx.Exec(
+			`INSERT INTO download_tokens (id, campaign_id, recipient_id, max_downloads, state, expires_at)
+			 VALUES (?, ?, ?, ?, 'PENDING', ?)`,
+			tokenID, newCampaign.ID, rid, newCampaign.MaxDownloads, expiresAt,
+		)
+		if terr != nil {
+			skipped++
+			slog.Warn("clone: skip recipient", "recipient_id", rid, "error", terr)
+		}
+	}
+
+	return skipped, tx.Commit()
 }
