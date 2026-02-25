@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ypk/downloadonce/internal/auth"
-	"github.com/ypk/downloadonce/internal/db"
-	"github.com/ypk/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/auth"
+	"github.com/YannKr/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/model"
 )
 
 func (h *Handler) SetupForm(w http.ResponseWriter, r *http.Request) {

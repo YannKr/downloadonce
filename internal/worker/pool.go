@@ -13,13 +13,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ypk/downloadonce/internal/config"
-	"github.com/ypk/downloadonce/internal/db"
-	"github.com/ypk/downloadonce/internal/email"
-	"github.com/ypk/downloadonce/internal/model"
-	"github.com/ypk/downloadonce/internal/sse"
-	"github.com/ypk/downloadonce/internal/watermark"
-	"github.com/ypk/downloadonce/internal/webhook"
+	"github.com/YannKr/downloadonce/internal/config"
+	"github.com/YannKr/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/email"
+	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/sse"
+	"github.com/YannKr/downloadonce/internal/watermark"
+	"github.com/YannKr/downloadonce/internal/webhook"
 )
 
 type Pool struct {

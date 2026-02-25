@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ypk/downloadonce/internal/auth"
-	"github.com/ypk/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/auth"
+	"github.com/YannKr/downloadonce/internal/db"
 )
 
 func (h *Handler) RequireAuth(next http.Handler) http.Handler {

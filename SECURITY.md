@@ -8,7 +8,7 @@ Only the latest release receives security fixes.
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Report vulnerabilities via [GitHub Security Advisories](https://github.com/ypk/downloadonce/security/advisories/new) or by emailing the maintainers directly (see the repository contact information).
+Report vulnerabilities via [GitHub Security Advisories](https://github.com/YannKr/downloadonce/security/advisories/new) or by emailing the maintainers directly (see the repository contact information).
 
 Please include:
 - A description of the vulnerability and its potential impact

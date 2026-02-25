@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"strings"
 
-	"github.com/ypk/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/model"
 )
 
 func CreateWebhook(database *sql.DB, w *model.Webhook) error {

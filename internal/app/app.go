@@ -10,16 +10,16 @@ import (
 	"path/filepath"
 	"time"
 
-	downloadonce "github.com/ypk/downloadonce"
-	"github.com/ypk/downloadonce/internal/cleanup"
-	"github.com/ypk/downloadonce/internal/config"
-	"github.com/ypk/downloadonce/internal/db"
-	"github.com/ypk/downloadonce/internal/diskstat"
-	"github.com/ypk/downloadonce/internal/email"
-	"github.com/ypk/downloadonce/internal/handler"
-	"github.com/ypk/downloadonce/internal/sse"
-	"github.com/ypk/downloadonce/internal/webhook"
-	"github.com/ypk/downloadonce/internal/worker"
+	downloadonce "github.com/YannKr/downloadonce"
+	"github.com/YannKr/downloadonce/internal/cleanup"
+	"github.com/YannKr/downloadonce/internal/config"
+	"github.com/YannKr/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/diskstat"
+	"github.com/YannKr/downloadonce/internal/email"
+	"github.com/YannKr/downloadonce/internal/handler"
+	"github.com/YannKr/downloadonce/internal/sse"
+	"github.com/YannKr/downloadonce/internal/webhook"
+	"github.com/YannKr/downloadonce/internal/worker"
 )
 
 func Run(ctx context.Context, cfg *config.Config) error {

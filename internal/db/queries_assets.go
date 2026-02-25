@@ -3,7 +3,7 @@ package db
 import (
 	"database/sql"
 
-	"github.com/ypk/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/model"
 )
 
 func CreateAsset(database *sql.DB, a *model.Asset) error {

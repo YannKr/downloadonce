@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/gorilla/csrf"
-	"github.com/ypk/downloadonce/internal/auth"
-	"github.com/ypk/downloadonce/internal/config"
-	"github.com/ypk/downloadonce/internal/diskstat"
-	"github.com/ypk/downloadonce/internal/email"
-	"github.com/ypk/downloadonce/internal/sse"
-	"github.com/ypk/downloadonce/internal/webhook"
+	"github.com/YannKr/downloadonce/internal/auth"
+	"github.com/YannKr/downloadonce/internal/config"
+	"github.com/YannKr/downloadonce/internal/diskstat"
+	"github.com/YannKr/downloadonce/internal/email"
+	"github.com/YannKr/downloadonce/internal/sse"
+	"github.com/YannKr/downloadonce/internal/webhook"
 )
 
 type Handler struct {

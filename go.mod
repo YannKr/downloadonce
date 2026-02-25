@@ -1,4 +1,4 @@
-module github.com/ypk/downloadonce
+module github.com/YannKr/downloadonce
 
 go 1.22.0
 

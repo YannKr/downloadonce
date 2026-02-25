@@ -10,8 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/ypk/downloadonce/internal/auth"
-	"github.com/ypk/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/auth"
+	"github.com/YannKr/downloadonce/internal/db"
 )
 
 func (h *Handler) DetectForm(w http.ResponseWriter, r *http.Request) {

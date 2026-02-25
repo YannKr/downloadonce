@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/ypk/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/model"
 )
 
 func CreateSession(database *sql.DB, s *model.Session) error {

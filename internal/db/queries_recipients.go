@@ -3,7 +3,7 @@ package db
 import (
 	"database/sql"
 
-	"github.com/ypk/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/model"
 )
 
 func CreateRecipient(database *sql.DB, r *model.Recipient) error {

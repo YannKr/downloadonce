@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"strings"
 
-	"github.com/ypk/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/model"
 )
 
 func ListRecipientGroups(database *sql.DB, accountID string) ([]model.RecipientGroupSummary, error) {

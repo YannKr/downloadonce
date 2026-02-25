@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ypk/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/db"
 )
 
 type Cleaner struct {

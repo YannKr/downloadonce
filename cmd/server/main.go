@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ypk/downloadonce/internal/app"
-	"github.com/ypk/downloadonce/internal/config"
+	"github.com/YannKr/downloadonce/internal/app"
+	"github.com/YannKr/downloadonce/internal/config"
 )
 
 // version is set at build time via -ldflags "-X main.version=v1.2.3".

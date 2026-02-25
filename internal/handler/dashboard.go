@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"github.com/ypk/downloadonce/internal/auth"
-	"github.com/ypk/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/auth"
+	"github.com/YannKr/downloadonce/internal/db"
 )
 
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {

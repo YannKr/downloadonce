@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ypk/downloadonce/internal/auth"
-	"github.com/ypk/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/auth"
+	"github.com/YannKr/downloadonce/internal/db"
 )
 
 type analyticsData struct {

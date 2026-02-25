@@ -2,8 +2,8 @@
 
 **Token-based file distribution with forensic watermarking.** Each recipient gets a unique download link; their copy is invisibly watermarked so leaks can be traced back to the source.
 
-[![CI](https://github.com/ypk/downloadonce/actions/workflows/ci.yml/badge.svg)](https://github.com/ypk/downloadonce/actions/workflows/ci.yml)
-[![Release](https://github.com/ypk/downloadonce/actions/workflows/release.yml/badge.svg)](https://github.com/ypk/downloadonce/actions/workflows/release.yml)
+[![CI](https://github.com/YannKr/downloadonce/actions/workflows/ci.yml/badge.svg)](https://github.com/YannKr/downloadonce/actions/workflows/ci.yml)
+[![Release](https://github.com/YannKr/downloadonce/actions/workflows/release.yml/badge.svg)](https://github.com/YannKr/downloadonce/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -29,7 +29,7 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/ypk/downloadonce
+git clone https://github.com/YannKr/downloadonce
 cd downloadonce
 cp .env.example .env        # edit BASE_URL and SESSION_SECRET at minimum
 docker compose up
@@ -94,19 +94,19 @@ For HTTPS, uncomment the Caddy service in `docker-compose.yml` and point `Caddyf
 ### Docker — pull from registry
 
 ```bash
-docker pull ghcr.io/ypk/downloadonce:latest
+docker pull ghcr.io/YannKr/downloadonce:latest
 
 docker run -d \
   -p 8080:8080 \
   -v downloadonce_data:/data \
   -e BASE_URL=https://dl.example.com \
   -e SESSION_SECRET=$(openssl rand -hex 32) \
-  ghcr.io/ypk/downloadonce:latest
+  ghcr.io/YannKr/downloadonce:latest
 ```
 
 ### Bare metal (Debian/Ubuntu)
 
-Download the latest binary from [GitHub Releases](https://github.com/ypk/downloadonce/releases), then:
+Download the latest binary from [GitHub Releases](https://github.com/YannKr/downloadonce/releases), then:
 
 ```bash
 scp downloadonce setup.sh root@your-server:~
@@ -157,10 +157,10 @@ See [`CLAUDE.md`](CLAUDE.md) for a full developer guide.
 Releases follow [Semantic Versioning](https://semver.org/). Docker images are published to the GitHub Container Registry on every tagged release:
 
 ```
-ghcr.io/ypk/downloadonce:latest
-ghcr.io/ypk/downloadonce:v1.2.3
-ghcr.io/ypk/downloadonce:v1.2
-ghcr.io/ypk/downloadonce:v1
+ghcr.io/YannKr/downloadonce:latest
+ghcr.io/YannKr/downloadonce:v1.2.3
+ghcr.io/YannKr/downloadonce:v1.2
+ghcr.io/YannKr/downloadonce:v1
 ```
 
 To release a new version:

@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ypk/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/db"
 )
 
 type Dispatcher struct {

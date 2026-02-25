@@ -11,8 +11,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/ypk/downloadonce/internal/db"
-	"github.com/ypk/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/model"
 )
 
 type downloadPageData struct {

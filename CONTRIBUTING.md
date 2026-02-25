@@ -14,7 +14,7 @@ Thank you for your interest in contributing. This document explains how to get s
 **Clone and build:**
 
 ```bash
-git clone https://github.com/ypk/downloadonce
+git clone https://github.com/YannKr/downloadonce
 cd downloadonce
 
 # Build
@@ -90,7 +90,7 @@ There are currently no automated tests. When adding significant new logic, pleas
 
 ## Reporting issues
 
-Please use [GitHub Issues](https://github.com/ypk/downloadonce/issues). Include:
+Please use [GitHub Issues](https://github.com/YannKr/downloadonce/issues). Include:
 - Steps to reproduce
 - Expected vs actual behaviour
 - Version or commit hash
