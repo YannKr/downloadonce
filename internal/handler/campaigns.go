@@ -15,15 +15,17 @@ import (
 )
 
 type campaignNewData struct {
-	Assets       []model.Asset
-	Recipients   []model.Recipient
-	Name         string
-	AssetID      string
-	MaxDownloads string
-	ExpiresAt    string
-	SelectedIDs  map[string]bool
-	VisibleWM    bool
-	InvisibleWM  bool
+	Assets         []model.Asset
+	Recipients     []model.Recipient
+	Groups         []model.RecipientGroupSummary
+	Name           string
+	AssetID        string
+	MaxDownloads   string
+	ExpiresAt      string
+	SelectedIDs    map[string]bool
+	SelectedGroups map[string]bool
+	VisibleWM      bool
+	InvisibleWM    bool
 }
 
 type campaignDetailData struct {
@@ -46,14 +48,18 @@ func (h *Handler) CampaignList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CampaignNewForm(w http.ResponseWriter, r *http.Request) {
+	accountID := auth.AccountFromContext(r.Context())
 	assets, _ := db.ListAssets(h.DB)
 	recipients, _ := db.ListRecipients(h.DB)
+	groups, _ := db.ListRecipientGroups(h.DB, accountID)
 	h.renderAuth(w, r, "campaign_new.html", "New Campaign", campaignNewData{
-		Assets:      assets,
-		Recipients:  recipients,
-		SelectedIDs: make(map[string]bool),
-		VisibleWM:   true,
-		InvisibleWM: true,
+		Assets:         assets,
+		Recipients:     recipients,
+		Groups:         groups,
+		SelectedIDs:    make(map[string]bool),
+		SelectedGroups: make(map[string]bool),
+		VisibleWM:      true,
+		InvisibleWM:    true,
 	})
 }
 
@@ -64,28 +70,55 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 	assetID := r.FormValue("asset_id")
 	name := strings.TrimSpace(r.FormValue("name"))
 	recipientIDs := r.Form["recipient_ids"]
+	groupIDs := r.Form["group_ids"]
 
-	if assetID == "" || name == "" || len(recipientIDs) == 0 {
+	// Expand groups and deduplicate with directly selected recipients
+	seen := make(map[string]struct{})
+	finalIDs := make([]string, 0)
+	for _, rid := range recipientIDs {
+		if _, ok := seen[rid]; !ok {
+			seen[rid] = struct{}{}
+			finalIDs = append(finalIDs, rid)
+		}
+	}
+	for _, gid := range groupIDs {
+		members, _ := db.ListGroupMemberIDs(h.DB, gid, accountID)
+		for _, rid := range members {
+			if _, ok := seen[rid]; !ok {
+				seen[rid] = struct{}{}
+				finalIDs = append(finalIDs, rid)
+			}
+		}
+	}
+
+	if assetID == "" || name == "" || len(finalIDs) == 0 {
 		assets, _ := db.ListAssets(h.DB)
 		recipients, _ := db.ListRecipients(h.DB)
+		groups, _ := db.ListRecipientGroups(h.DB, accountID)
 		selected := make(map[string]bool)
 		for _, rid := range recipientIDs {
 			selected[rid] = true
 		}
+		selectedGroups := make(map[string]bool)
+		for _, gid := range groupIDs {
+			selectedGroups[gid] = true
+		}
 		h.render(w, r, "campaign_new.html", PageData{
 			Title: "New Campaign", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
-			Error: "Asset, name, and at least one recipient are required.",
+			Error: "Asset, name, and at least one recipient or group are required.",
 			Data: campaignNewData{
-				Assets:       assets,
-				Recipients:   recipients,
-				Name:         name,
-				AssetID:      assetID,
-				MaxDownloads: r.FormValue("max_downloads"),
-				ExpiresAt:    r.FormValue("expires_at"),
-				SelectedIDs:  selected,
-				VisibleWM:    r.FormValue("visible_wm") == "on",
-				InvisibleWM:  r.FormValue("invisible_wm") == "on",
+				Assets:         assets,
+				Recipients:     recipients,
+				Groups:         groups,
+				Name:           name,
+				AssetID:        assetID,
+				MaxDownloads:   r.FormValue("max_downloads"),
+				ExpiresAt:      r.FormValue("expires_at"),
+				SelectedIDs:    selected,
+				SelectedGroups: selectedGroups,
+				VisibleWM:      r.FormValue("visible_wm") == "on",
+				InvisibleWM:    r.FormValue("invisible_wm") == "on",
 			},
 		})
 		return
@@ -125,7 +158,7 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, rid := range recipientIDs {
+	for _, rid := range finalIDs {
 		token := &model.DownloadToken{
 			ID:           uuid.New().String(),
 			CampaignID:   campaign.ID,

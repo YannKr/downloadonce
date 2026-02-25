@@ -54,26 +54,43 @@ func (c *Cleaner) loop(ctx context.Context) {
 }
 
 func (c *Cleaner) runOnce() {
+	// Expire campaigns
 	campaigns, err := db.ListExpiredCampaigns(c.DB)
 	if err != nil {
 		slog.Error("cleanup: list expired campaigns", "error", err)
-		return
+	} else {
+		for _, campaign := range campaigns {
+			slog.Info("expiring campaign", "id", campaign.ID, "name", campaign.Name)
+			if err := db.ExpireCampaignAndTokens(c.DB, campaign.ID); err != nil {
+				slog.Error("cleanup: expire campaign", "id", campaign.ID, "error", err)
+				continue
+			}
+			wmDir := filepath.Join(c.DataDir, "watermarked", campaign.ID)
+			if err := os.RemoveAll(wmDir); err != nil {
+				slog.Warn("cleanup: remove watermarked dir", "dir", wmDir, "error", err)
+			} else {
+				slog.Info("cleanup: removed watermarked files", "campaign", campaign.ID)
+			}
+		}
 	}
 
-	for _, campaign := range campaigns {
-		slog.Info("expiring campaign", "id", campaign.ID, "name", campaign.Name)
-
-		if err := db.ExpireCampaignAndTokens(c.DB, campaign.ID); err != nil {
-			slog.Error("cleanup: expire campaign", "id", campaign.ID, "error", err)
-			continue
-		}
-
-		// Remove watermarked files
-		wmDir := filepath.Join(c.DataDir, "watermarked", campaign.ID)
-		if err := os.RemoveAll(wmDir); err != nil {
-			slog.Warn("cleanup: remove watermarked dir", "dir", wmDir, "error", err)
-		} else {
-			slog.Info("cleanup: removed watermarked files", "campaign", campaign.ID)
+	// Expire upload sessions
+	sessions, sessErr := db.ListExpiredUploadSessions(c.DB)
+	if sessErr != nil {
+		slog.Error("cleanup: list expired upload sessions", "error", sessErr)
+	} else {
+		for _, session := range sessions {
+			slog.Info("expiring upload session", "id", session.ID)
+			if err := db.ExpireUploadSession(c.DB, session.ID); err != nil {
+				slog.Error("cleanup: expire upload session", "id", session.ID, "error", err)
+				continue
+			}
+			sessionDir := filepath.Join(c.DataDir, "uploads", session.ID)
+			if err := os.RemoveAll(sessionDir); err != nil {
+				slog.Warn("cleanup: remove upload session dir", "dir", sessionDir, "error", err)
+			} else {
+				slog.Info("cleanup: removed upload session files", "session", session.ID)
+			}
 		}
 	}
 }

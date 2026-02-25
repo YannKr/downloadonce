@@ -1,13 +1,81 @@
 {{define "content"}}
-<h1>Upload Assets</h1>
+<h1>Upload Asset</h1>
 
-<form method="POST" action="/assets/upload" enctype="multipart/form-data">
-  {{.CSRFField}}
+<div id="upload-area">
   <div class="form-group">
-    <label for="files">Files (video or image — select multiple)</label>
-    <input type="file" id="files" name="files" required accept="video/*,image/*" multiple>
+    <label for="file-input">Select file (video or image)</label>
+    <input type="file" id="file-input" accept="video/*,image/*">
   </div>
-  <button type="submit" class="btn btn-primary">Upload</button>
-  <a href="/assets" class="btn btn-secondary">Cancel</a>
-</form>
+  <div id="upload-progress-wrap" style="display:none">
+    <div class="progress-bar">
+      <div class="progress-fill" id="upload-progress-bar" style="width:0%"></div>
+      <span class="progress-text" id="upload-progress-pct">0%</span>
+    </div>
+    <p id="upload-status" class="text-muted" style="margin-top:0.5rem"></p>
+    <button type="button" id="cancel-upload-btn" class="btn btn-secondary" style="margin-top:0.5rem">Cancel</button>
+  </div>
+  <div id="upload-controls">
+    <button type="button" id="start-upload-btn" class="btn btn-primary" disabled>Upload</button>
+    <a href="/assets" class="btn btn-secondary">Cancel</a>
+  </div>
+  <p id="upload-error" class="alert alert-error" style="display:none"></p>
+</div>
+
+<script>
+(function() {
+  var fileInput    = document.getElementById("file-input");
+  var startBtn     = document.getElementById("start-upload-btn");
+  var cancelBtn    = document.getElementById("cancel-upload-btn");
+  var progressWrap = document.getElementById("upload-progress-wrap");
+  var progressBar  = document.getElementById("upload-progress-bar");
+  var progressPct  = document.getElementById("upload-progress-pct");
+  var statusEl     = document.getElementById("upload-status");
+  var errorEl      = document.getElementById("upload-error");
+  var controls     = document.getElementById("upload-controls");
+
+  fileInput.addEventListener("change", function() {
+    startBtn.disabled = !fileInput.files.length;
+  });
+
+  startBtn.addEventListener("click", function() {
+    if (!fileInput.files.length) return;
+    var file = fileInput.files[0];
+    controls.style.display = "none";
+    progressWrap.style.display = "";
+    errorEl.style.display = "none";
+    if (window.ChunkedUpload) {
+      window.ChunkedUpload.start(file, {
+        onProgress: function(pct, msg) {
+          progressBar.style.width = pct + "%";
+          progressPct.textContent = pct + "%";
+          statusEl.textContent = msg || "";
+        },
+        onComplete: function(assetId) {
+          statusEl.textContent = "Upload complete. Redirecting...";
+          setTimeout(function() { window.location.href = "/assets"; }, 800);
+        },
+        onError: function(msg) {
+          errorEl.textContent = msg;
+          errorEl.style.display = "";
+          progressWrap.style.display = "none";
+          controls.style.display = "";
+          startBtn.disabled = false;
+        },
+        onCancel: function() {
+          progressWrap.style.display = "none";
+          controls.style.display = "";
+          startBtn.disabled = !fileInput.files.length;
+        },
+        getCancelHandle: function(handle) {
+          cancelBtn._cancelHandle = handle;
+        }
+      });
+    }
+  });
+
+  cancelBtn.addEventListener("click", function() {
+    if (cancelBtn._cancelHandle) cancelBtn._cancelHandle();
+  });
+})();
+</script>
 {{end}}

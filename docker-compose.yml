@@ -1,31 +1,23 @@
+# Copy .env.example to .env and set BASE_URL + SESSION_SECRET before running.
 services:
   app:
     build: .
+    env_file:
+      - path: .env
+        required: false   # falls back to environment / built-in defaults if .env absent
     ports:
       - "8080:8080"
     volumes:
       - data:/data
     environment:
-      - DATA_DIR=/data
-      - BASE_URL=http://localhost:8080
-      - SESSION_SECRET=change-me-in-production
-      - LISTEN_ADDR=:8080
-      - WORKER_COUNT=2
-      - MAX_UPLOAD_BYTES=2147483648
-      - FONT_PATH=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
-      - VENV_PATH=/opt/venv
-      - LOG_LEVEL=info
-      # SMTP (optional — uncomment to enable email delivery)
-      # - SMTP_HOST=smtp.example.com
-      # - SMTP_PORT=587
-      # - SMTP_USER=user@example.com
-      # - SMTP_PASS=secret
-      # - SMTP_FROM=noreply@example.com
-      # Cleanup interval in minutes (default 60)
-      # - CLEANUP_INTERVAL_MINS=60
+      # Defaults — overridden by .env when present
+      DATA_DIR: /data
+      FONT_PATH: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+      VENV_PATH: /opt/venv
     restart: unless-stopped
 
   # Optional: reverse proxy with automatic HTTPS
+  # Uncomment and edit Caddyfile to use.
   # caddy:
   #   image: caddy:2-alpine
   #   ports:

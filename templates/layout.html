@@ -3,9 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{.CSRFToken}}">
   <title>{{.Title}} - DownloadOnce</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/sse.js" defer></script>
+  <script src="/static/upload.js" defer></script>
 </head>
 <body>
   {{if .Authenticated}}
@@ -32,6 +34,11 @@
   </nav>
   {{end}}
   <main class="container">
+    {{if and .IsAdmin (gt .DiskWarning 0)}}
+    <div class="alert {{if ge .DiskWarning 2}}alert-error{{else}}alert-warning{{end}}">
+      Disk space: {{.DiskWarnMsg}} &mdash; <a href="/admin/storage">View details</a>
+    </div>
+    {{end}}
     {{if .Error}}<div class="alert alert-error">{{.Error}}</div>{{end}}
     {{if .Flash}}<div class="alert alert-success">{{.Flash}}</div>{{end}}
     {{template "content" .}}

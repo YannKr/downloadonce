@@ -82,6 +82,16 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 		r.Post("/recipients/import", h.RecipientImport)
 		r.Post("/recipients/{id}/delete", h.RecipientDelete)
 
+		// Recipient groups
+		r.Get("/recipients/groups", h.GroupList)
+		r.Post("/recipients/groups", h.GroupCreate)
+		r.Get("/recipients/groups/{id}", h.GroupDetail)
+		r.Post("/recipients/groups/{id}/edit", h.GroupEdit)
+		r.Post("/recipients/groups/{id}/delete", h.GroupDelete)
+		r.Post("/recipients/groups/{id}/add-members", h.GroupAddMembers)
+		r.Post("/recipients/groups/{id}/members/{recipientID}/remove", h.GroupRemoveMember)
+		r.Post("/recipients/groups/{id}/import", h.GroupImport)
+
 		r.Get("/campaigns", h.CampaignList)
 		r.Get("/campaigns/new", h.CampaignNewForm)
 		r.Post("/campaigns/new", h.CampaignCreate)
@@ -104,6 +114,13 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 		r.Post("/settings/webhooks", h.WebhookCreate)
 		r.Post("/settings/webhooks/{id}/delete", h.WebhookDelete)
 
+		// Chunked upload API
+		r.Post("/upload/chunks/init", h.UploadInit)
+		r.Put("/upload/chunks/{sessionID}/{chunkIndex}", h.UploadChunk)
+		r.Get("/upload/chunks/{sessionID}/status", h.UploadStatus)
+		r.Post("/upload/chunks/{sessionID}/complete", h.UploadComplete)
+		r.Delete("/upload/chunks/{sessionID}", h.UploadCancel)
+
 		// Admin routes
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(h.RequireAdmin)
@@ -114,6 +131,8 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 			r.Post("/users/{id}/promote", h.AdminPromoteUser)
 			r.Get("/campaigns", h.AdminCampaigns)
 			r.Get("/audit", h.AdminAudit)
+			r.Get("/storage", h.AdminStorage)
+			r.Get("/storage.json", h.AdminStorageJSON)
 		})
 	})
 

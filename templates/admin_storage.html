@@ -1,0 +1,55 @@
+{{define "content"}}
+<div class="page-header">
+  <h1>Storage</h1>
+  <a href="/admin/storage" class="btn btn-secondary">Refresh</a>
+</div>
+
+{{if gt .Data.WarnLevel 0}}
+<div class="alert {{if eq .Data.WarnLevel 3}}alert-error{{else if eq .Data.WarnLevel 2}}alert-error{{else}}alert-warning{{end}}">
+  Disk space warning: {{.Data.WarnMsg}}
+</div>
+{{end}}
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{formatBytes (toInt64 .Data.FreeBytes)}}</div>
+    <div class="stat-label">Free</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{formatBytes (toInt64 .Data.TotalBytes)}}</div>
+    <div class="stat-label">Total Disk</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{formatBytes (toInt64 .Data.AppBytes)}}</div>
+    <div class="stat-label">App Data</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{formatBytes (toInt64 .Data.WatermarkedBytes)}}</div>
+    <div class="stat-label">Watermarked Files</div>
+  </div>
+</div>
+
+<h2>Disk Usage</h2>
+<div style="margin-bottom:1rem">
+  <div class="progress-bar" style="height:24px">
+    <div class="progress-fill {{if eq .Data.WarnLevel 3}}progress-danger{{else if eq .Data.WarnLevel 2}}progress-warning{{else if eq .Data.WarnLevel 1}}progress-caution{{end}}"
+         style="width: {{printf "%.1f" .Data.PctUsed}}%"></div>
+    <span class="progress-text">{{printf "%.1f" .Data.PctFree}}% free</span>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Directory</th><th>Size</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Originals (assets)</td><td>{{formatBytes (toInt64 .Data.AssetsBytes)}}</td></tr>
+    <tr><td>Watermarked files</td><td>{{formatBytes (toInt64 .Data.WatermarkedBytes)}}</td></tr>
+    <tr><td>In-progress uploads</td><td>{{formatBytes (toInt64 .Data.UploadsBytes)}}</td></tr>
+    <tr><td><strong>Total app data</strong></td><td><strong>{{formatBytes (toInt64 .Data.AppBytes)}}</strong></td></tr>
+  </tbody>
+</table>
+
+<p class="text-muted" style="margin-top:1rem">Last updated: {{.Data.CapturedAt}}</p>
+<p class="text-muted"><a href="/admin/storage.json">JSON endpoint</a> for external monitoring.</p>
+{{end}}

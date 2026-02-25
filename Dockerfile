@@ -1,9 +1,13 @@
 # Build stage
 FROM golang:1.22-bookworm AS builder
 
+ARG VERSION=dev
+
 WORKDIR /src
 COPY . .
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /downloadonce ./cmd/server
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags "-s -w -X main.version=${VERSION}" \
+    -o /downloadonce ./cmd/server
 
 # Runtime stage
 FROM debian:trixie-slim

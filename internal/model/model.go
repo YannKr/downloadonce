@@ -139,3 +139,47 @@ type Webhook struct {
 	Enabled   bool
 	CreatedAt time.Time
 }
+
+type UploadSession struct {
+	ID             string
+	AccountID      string
+	Filename       string
+	Size           int64
+	MimeType       string
+	ChunkSize      int64
+	TotalChunks    int
+	ReceivedChunks []int
+	Status         string // PENDING, COMPLETE, EXPIRED
+	StoragePath    string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ExpiresAt      time.Time
+}
+
+type RecipientGroup struct {
+	ID          string
+	AccountID   string
+	Name        string
+	Description string
+	CreatedAt   time.Time
+}
+
+type RecipientGroupSummary struct {
+	RecipientGroup
+	MemberCount int
+}
+
+type RecipientGroupMember struct {
+	Recipient
+	AddedAt time.Time
+}
+
+type GroupBadge struct {
+	ID   string
+	Name string
+}
+
+type RecipientWithGroups struct {
+	Recipient
+	Groups []GroupBadge
+}

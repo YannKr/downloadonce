@@ -29,6 +29,16 @@ type Config struct {
 
 	// Registration
 	AllowRegistration bool
+
+	// Chunked upload
+	UploadSessionTTLHours int
+
+	// Disk space monitoring
+	MaxStorageBytes    int64
+	WMCompressionFactor float64
+	DiskWarnYellowPct  float64
+	DiskWarnRedPct     float64
+	DiskWarnBlockPct   float64
 }
 
 func Load() *Config {
@@ -47,8 +57,14 @@ func Load() *Config {
 		SMTPUser:            envOr("SMTP_USER", ""),
 		SMTPPass:            envOr("SMTP_PASS", ""),
 		SMTPFrom:            envOr("SMTP_FROM", ""),
-		CleanupIntervalMins: envIntOr("CLEANUP_INTERVAL_MINS", 60),
-		AllowRegistration:   envBoolOr("ALLOW_REGISTRATION", false),
+		CleanupIntervalMins:   envIntOr("CLEANUP_INTERVAL_MINS", 60),
+		AllowRegistration:     envBoolOr("ALLOW_REGISTRATION", false),
+		UploadSessionTTLHours: envIntOr("UPLOAD_SESSION_TTL_HOURS", 24),
+		MaxStorageBytes:       envInt64Or("MAX_STORAGE_BYTES", 0),
+		WMCompressionFactor:   envFloat64Or("WM_COMPRESSION_FACTOR", 0.9),
+		DiskWarnYellowPct:     envFloat64Or("DISK_WARN_YELLOW_PCT", 20.0),
+		DiskWarnRedPct:        envFloat64Or("DISK_WARN_RED_PCT", 10.0),
+		DiskWarnBlockPct:      envFloat64Or("DISK_WARN_BLOCK_PCT", 5.0),
 	}
 }
 
@@ -72,6 +88,15 @@ func envInt64Or(key string, fallback int64) int64 {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			return n
+		}
+	}
+	return fallback
+}
+
+func envFloat64Or(key string, fallback float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return fallback

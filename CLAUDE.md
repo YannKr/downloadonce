@@ -8,6 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build the binary
 go build ./cmd/server
 
+# Cross-compile for Linux (e.g. deploying to an LXC container)
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o downloadonce ./cmd/server
+
 # Run locally (requires ffmpeg, imagemagick, python3+invisible-watermark in PATH/venv)
 ./server
 
@@ -16,6 +19,10 @@ docker compose up --build
 
 # Run with custom config
 BASE_URL=https://example.com SESSION_SECRET=mysecret ./server
+
+# Deploy to a Debian Trixie LXC / VM (see setup.sh)
+scp downloadonce setup.sh root@<host>:~
+ssh root@<host> 'BASE_URL=https://dl.example.com ./setup.sh'
 ```
 
 There are no automated tests in this codebase yet.

@@ -2,11 +2,18 @@
 .vscode/
 .idea/
 
-# Go
+# Go binary
 /downloadonce
 
-# Data
+# Runtime data
 /data/
+
+# Environment (contains secrets — use .env.example as template)
+.env
+
+# Claude Code working directory
+.claude/
 
 # OS
 .DS_Store
+Thumbs.db

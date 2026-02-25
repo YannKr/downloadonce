@@ -18,8 +18,34 @@
     </select>
   </div>
 
+  {{if .Data.Groups}}
   <div class="form-group">
-    <label>Recipients</label>
+    <label>Recipient Groups</label>
+    <div class="checkbox-group">
+      {{range .Data.Groups}}
+      <label class="checkbox-label">
+        <input type="checkbox" name="group_ids" value="{{.ID}}" data-count="{{.MemberCount}}"
+               {{if index $.Data.SelectedGroups .ID}}checked{{end}} onchange="updateGroupCount()">
+        {{.Name}} ({{.MemberCount}} member{{if ne .MemberCount 1}}s{{end}})
+      </label>
+      {{end}}
+    </div>
+    <small class="text-muted" id="group-count-msg"></small>
+  </div>
+  <script>
+  function updateGroupCount() {
+    var total = 0;
+    document.querySelectorAll('input[name="group_ids"]:checked').forEach(function(cb) {
+      total += parseInt(cb.dataset.count || 0);
+    });
+    var el = document.getElementById('group-count-msg');
+    el.textContent = total > 0 ? 'Approx. ' + total + ' recipient(s) from selected groups (duplicates removed at save).' : '';
+  }
+  </script>
+  {{end}}
+
+  <div class="form-group">
+    <label>Individual Recipients</label>
     {{if .Data.Recipients}}
     <div class="checkbox-group">
       {{range .Data.Recipients}}

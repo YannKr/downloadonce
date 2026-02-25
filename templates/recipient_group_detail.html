@@ -1,0 +1,95 @@
+{{define "content"}}
+<div class="page-header">
+  <h1>{{.Data.Group.Name}}</h1>
+  <a href="/recipients/groups" class="btn btn-secondary">All Groups</a>
+</div>
+{{if .Data.Group.Description}}<p class="text-muted">{{.Data.Group.Description}}</p>{{end}}
+
+<h2>Edit Group</h2>
+<form method="POST" action="/recipients/groups/{{.Data.Group.ID}}/edit">
+  {{.CSRFField}}
+  <div class="form-row">
+    <div class="form-group">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" required maxlength="100" value="{{.Data.Group.Name}}">
+    </div>
+    <div class="form-group">
+      <label for="description">Description</label>
+      <input type="text" id="description" name="description" maxlength="500" value="{{.Data.Group.Description}}">
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">Save</button>
+</form>
+
+<h2>Members ({{len .Data.Members}})</h2>
+{{if .Data.Members}}
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Email</th>
+      <th>Organization</th>
+      <th>Added</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Data.Members}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td>{{.Email}}</td>
+      <td>{{.Org}}</td>
+      <td>{{formatTime .AddedAt}}</td>
+      <td>
+        <form method="POST" action="/recipients/groups/{{$.Data.Group.ID}}/members/{{.ID}}/remove"
+              onsubmit="return confirm('Remove {{.Name}} from this group?')">
+          {{$.CSRFField}}
+          <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="text-muted">No members yet. Add recipients below.</p>
+{{end}}
+
+{{if .Data.NonMembers}}
+<h2>Add Members</h2>
+<form method="POST" action="/recipients/groups/{{.Data.Group.ID}}/add-members">
+  {{.CSRFField}}
+  <div class="form-group">
+    <input type="text" id="member-search" placeholder="Filter by name or email..."
+           oninput="filterMembers(this.value)" style="margin-bottom:0.5rem">
+    <div class="checkbox-group" id="member-list" style="max-height:300px;overflow-y:auto">
+      {{range .Data.NonMembers}}
+      <label class="checkbox-label member-option" data-search="{{.Name}} {{.Email}}">
+        <input type="checkbox" name="recipient_ids" value="{{.ID}}">
+        {{.Name}} &lt;{{.Email}}&gt;{{if .Org}} ({{.Org}}){{end}}
+      </label>
+      {{end}}
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">Add Selected</button>
+</form>
+<script>
+function filterMembers(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.member-option').forEach(function(el) {
+    el.style.display = el.dataset.search.toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+  });
+}
+</script>
+{{end}}
+
+<h2>Import from CSV</h2>
+<form method="POST" action="/recipients/groups/{{.Data.Group.ID}}/import" enctype="multipart/form-data">
+  {{.CSRFField}}
+  <div class="form-group">
+    <label for="file">CSV file (columns: Name, Email, Organization)</label>
+    <input type="file" id="file" name="file" accept=".csv,text/csv">
+  </div>
+  <button type="submit" class="btn btn-primary">Import</button>
+</form>
+{{end}}

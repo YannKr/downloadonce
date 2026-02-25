@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/csrf"
 	"github.com/ypk/downloadonce/internal/auth"
 	"github.com/ypk/downloadonce/internal/config"
+	"github.com/ypk/downloadonce/internal/diskstat"
 	"github.com/ypk/downloadonce/internal/email"
 	"github.com/ypk/downloadonce/internal/sse"
 	"github.com/ypk/downloadonce/internal/webhook"
@@ -23,11 +24,15 @@ type Handler struct {
 	Mailer    *email.Mailer
 	Webhook   *webhook.Dispatcher
 	SSE       *sse.Hub
+	DiskCache *diskstat.Cache
 	templates map[string]*template.Template
 }
 
 func New(database *sql.DB, cfg *config.Config, templateFS fs.FS, mailer *email.Mailer, webhookDispatcher *webhook.Dispatcher, sseHub *sse.Hub) *Handler {
 	funcMap := template.FuncMap{
+		"toInt64": func(v uint64) int64 {
+			return int64(v)
+		},
 		"downloadURL": func(tokenID string) string {
 			return cfg.BaseURL + "/d/" + tokenID
 		},
@@ -151,6 +156,9 @@ type PageData struct {
 	Flash         string
 	Error         string
 	CSRFField     template.HTML
+	CSRFToken     string
+	DiskWarning   int
+	DiskWarnMsg   string
 	Data          interface{}
 }
 
@@ -163,8 +171,28 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 	}
 	if r != nil {
 		data.CSRFField = csrf.TemplateField(r)
+		data.CSRFToken = csrf.Token(r)
 		if data.Flash == "" {
 			data.Flash = getFlash(w, r)
+		}
+	}
+	if h.DiskCache != nil && data.IsAdmin {
+		stats := h.DiskCache.Get()
+		data.DiskWarning = stats.WarningLevel(
+			h.Cfg.DiskWarnYellowPct,
+			h.Cfg.DiskWarnRedPct,
+			h.Cfg.DiskWarnBlockPct,
+		)
+		if data.DiskWarning > 0 {
+			pct := stats.PctFree()
+			switch data.DiskWarning {
+			case diskstat.WarnYellow:
+				data.DiskWarnMsg = fmt.Sprintf("%.1f%% free — running low", pct)
+			case diskstat.WarnRed:
+				data.DiskWarnMsg = fmt.Sprintf("%.1f%% free — critically low", pct)
+			case diskstat.WarnBlock:
+				data.DiskWarnMsg = fmt.Sprintf("%.1f%% free — disk full, new publishes blocked", pct)
+			}
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

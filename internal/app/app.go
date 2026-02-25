@@ -14,6 +14,7 @@ import (
 	"github.com/ypk/downloadonce/internal/cleanup"
 	"github.com/ypk/downloadonce/internal/config"
 	"github.com/ypk/downloadonce/internal/db"
+	"github.com/ypk/downloadonce/internal/diskstat"
 	"github.com/ypk/downloadonce/internal/email"
 	"github.com/ypk/downloadonce/internal/handler"
 	"github.com/ypk/downloadonce/internal/sse"
@@ -23,7 +24,7 @@ import (
 
 func Run(ctx context.Context, cfg *config.Config) error {
 	// Ensure data directories exist
-	for _, dir := range []string{cfg.DataDir, cfg.DataDir + "/originals", cfg.DataDir + "/watermarked", cfg.DataDir + "/detect"} {
+	for _, dir := range []string{cfg.DataDir, cfg.DataDir + "/originals", cfg.DataDir + "/watermarked", cfg.DataDir + "/detect", cfg.DataDir + "/uploads"} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
@@ -99,8 +100,14 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	authRL := handler.NewRateLimiter(5.0/60.0, 5)
 	defer authRL.Stop()
 
+	// Start disk stats cache
+	diskCache := diskstat.New(cfg.DataDir, 60*time.Second)
+	diskCache.Start()
+	defer diskCache.Stop()
+
 	// Build handler and routes
 	h := handler.New(database, cfg, templateFS, mailer, webhookDispatcher, sseHub)
+	h.DiskCache = diskCache
 	router := h.Routes(staticFS, authRL)
 
 	srv := &http.Server{
