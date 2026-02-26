@@ -9,6 +9,11 @@
       {{.CSRFField}}
       <button type="submit" class="btn btn-primary">Publish</button>
     </form>
+    <form method="POST" action="/campaigns/{{.Data.Campaign.ID}}/clone" style="display:inline"
+          onsubmit="return confirm(\"Clone this campaign?\n\nThis will create a new draft with the same recipients and settings.\")">
+      {{.CSRFField}}
+      <button type="submit" class="btn btn-secondary">Clone Campaign</button>
+    </form>
     {{end}}
   </div>
 </div>
@@ -44,6 +49,30 @@
   {{end}}
 </div>
 
+{{if or (eq .Data.Campaign.State "READY") (eq .Data.Campaign.State "PROCESSING") (eq .Data.Campaign.State "EXPIRED")}}
+<div class="export-bar" style="margin-bottom:1rem;">
+  <span style="margin-right:0.5rem;">Export links:</span>
+  <button class="btn btn-sm btn-secondary" onclick="copyLinksToClipboard()">Copy to clipboard</button>
+  <a href="/campaigns/{{.Data.Campaign.ID}}/export-links?format=csv" class="btn btn-sm btn-secondary">Download CSV</a>
+  <a href="/campaigns/{{.Data.Campaign.ID}}/export-links?format=txt" class="btn btn-sm btn-secondary">Download TXT</a>
+</div>
+<script>
+async function copyLinksToClipboard() {
+  try {
+    const resp = await fetch("/campaigns/{{.Data.Campaign.ID}}/export-links?format=txt");
+    if (!resp.ok) throw new Error("Export failed");
+    const text = await resp.text();
+    await navigator.clipboard.writeText(text);
+    const btn = document.querySelector("[onclick=\"copyLinksToClipboard()\"]");
+    const origText = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = origText; }, 2000);
+  } catch (err) {
+    alert("Copy failed: " + err.message);
+  }
+}
+</script>
+{{end}}
 <h2>Download Tokens</h2>
 <table>
   <thead>

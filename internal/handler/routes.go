@@ -131,6 +131,8 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 		r.Post("/campaigns/{id}/publish", h.CampaignPublish)
 		r.Post("/campaigns/{id}/tokens/{tokenID}/revoke", h.TokenRevoke)
 		r.Get("/campaigns/{id}/events", h.CampaignSSE)
+		r.Post("/campaigns/{id}/clone", h.CampaignClone)
+		r.Get("/campaigns/{id}/export-links", h.CampaignExportLinks)
 
 		r.Get("/detect", h.DetectForm)
 		r.Post("/detect", h.DetectSubmit)

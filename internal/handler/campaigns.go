@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/csv"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -296,4 +298,135 @@ func (h *Handler) TokenRevoke(w http.ResponseWriter, r *http.Request) {
 	db.InsertAuditLog(h.DB, accountID, "token_revoked", "token", tokenID, "", r.RemoteAddr)
 	setFlash(w, "Token revoked.")
 	http.Redirect(w, r, "/campaigns/"+campaignID, http.StatusSeeOther)
+}
+
+func (h *Handler) CampaignClone(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	accountID := auth.AccountFromContext(r.Context())
+
+	src, err := db.GetCampaign(h.DB, id)
+	if err != nil || src == nil || (src.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
+	srcTokens, err := db.ListTokensByCampaign(h.DB, id)
+	if err != nil {
+		slog.Error("clone: list tokens", "error", err)
+		http.Error(w, "Internal error", 500)
+		return
+	}
+	recipientIDs := make([]string, 0, len(srcTokens))
+	for _, t := range srcTokens {
+		recipientIDs = append(recipientIDs, t.RecipientID)
+	}
+
+	r.ParseForm()
+
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		name = src.Name + " (copy)"
+	}
+
+	assetID := r.FormValue("asset_id")
+	if assetID == "" {
+		assetID = src.AssetID
+	}
+
+	assetMissing := false
+	if a, _ := db.GetAsset(h.DB, assetID); a == nil {
+		assetMissing = true
+		assetID = ""
+	}
+
+	newExpiry := src.ExpiresAt
+	if raw := r.FormValue("expires_at"); raw != "" {
+		if t, terr := time.Parse("2006-01-02T15:04", raw); terr == nil {
+			newExpiry = &t
+		}
+	}
+
+	newCampaign := &model.Campaign{
+		ID:          uuid.New().String(),
+		AccountID:   accountID,
+		AssetID:     assetID,
+		Name:        name,
+		MaxDownloads: src.MaxDownloads,
+		ExpiresAt:   newExpiry,
+		VisibleWM:   src.VisibleWM,
+		InvisibleWM: src.InvisibleWM,
+		State:       "DRAFT",
+	}
+
+	skipped, err := db.CloneCampaign(h.DB, newCampaign, recipientIDs)
+	if err != nil {
+		slog.Error("clone campaign", "src", id, "error", err)
+		http.Error(w, "Internal error", 500)
+		return
+	}
+
+	db.InsertAuditLog(h.DB, accountID, "campaign_cloned", "campaign", newCampaign.ID, newCampaign.Name, r.RemoteAddr)
+
+	flashMsg := "Campaign cloned successfully."
+	if assetMissing {
+		flashMsg = "Campaign cloned, but the original asset no longer exists — please select a new asset before publishing."
+	} else if skipped > 0 {
+		flashMsg = fmt.Sprintf("Campaign cloned. %d recipient(s) were skipped because they no longer exist.", skipped)
+	}
+	setFlash(w, flashMsg)
+	http.Redirect(w, r, "/campaigns/"+newCampaign.ID, http.StatusSeeOther)
+}
+
+func (h *Handler) CampaignExportLinks(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	accountID := auth.AccountFromContext(r.Context())
+
+	campaign, err := db.GetCampaign(h.DB, id)
+	if err != nil || campaign == nil || (campaign.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
+	switch campaign.State {
+	case "PROCESSING", "READY", "EXPIRED":
+		// allowed
+	default:
+		http.Error(w, "Export is only available after a campaign has been published.", http.StatusBadRequest)
+		return
+	}
+
+	tokens, err := db.ListTokensByCampaign(h.DB, id)
+	if err != nil {
+		slog.Error("export-links: list tokens", "error", err)
+		http.Error(w, "Internal error", 500)
+		return
+	}
+
+	format := r.URL.Query().Get("format")
+	safeName := sanitizeFilename(campaign.Name)
+
+	switch format {
+	case "csv":
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition",
+			fmt.Sprintf(`attachment; filename="%s-links.csv"`, safeName))
+		wr := csv.NewWriter(w)
+		wr.Write([]string{"name", "email", "org", "download_url", "token_state", "download_count"})
+		for _, t := range tokens {
+			wr.Write([]string{
+				t.RecipientName, t.RecipientEmail, t.RecipientOrg,
+				h.Cfg.BaseURL + "/d/" + t.ID,
+				t.State, strconv.Itoa(t.DownloadCount),
+			})
+		}
+		wr.Flush()
+	default:
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition",
+			fmt.Sprintf(`attachment; filename="%s-links.txt"`, safeName))
+		for _, t := range tokens {
+			fmt.Fprintf(w, "%s <%s> → %s\n",
+				t.RecipientName, t.RecipientEmail, h.Cfg.BaseURL+"/d/"+t.ID)
+		}
+	}
 }
