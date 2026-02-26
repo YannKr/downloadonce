@@ -205,10 +205,10 @@ func GetJobByToken(database *sql.DB, tokenID string) (*model.Job, error) {
 	return j, nil
 }
 
-func InsertWatermarkIndex(database *sql.DB, payloadHex, tokenID, campaignID, recipientID string) error {
+func InsertWatermarkIndex(database *sql.DB, payloadHex, tokenID, campaignID, recipientID, wmAlgorithm string) error {
 	_, err := database.Exec(
-		`INSERT OR IGNORE INTO watermark_index (payload_hex, token_id, campaign_id, recipient_id) VALUES (?, ?, ?, ?)`,
-		payloadHex, tokenID, campaignID, recipientID,
+		`INSERT OR IGNORE INTO watermark_index (payload_hex, token_id, campaign_id, recipient_id, wm_algorithm) VALUES (?, ?, ?, ?, ?)`,
+		payloadHex, tokenID, campaignID, recipientID, wmAlgorithm,
 	)
 	return err
 }

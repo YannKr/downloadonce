@@ -8,6 +8,7 @@ require (
 	github.com/gorilla/csrf v1.7.2
 	golang.org/x/crypto v0.31.0
 	golang.org/x/time v0.9.0
+	gonum.org/v1/gonum v0.15.1
 	modernc.org/sqlite v1.34.4
 )
 
