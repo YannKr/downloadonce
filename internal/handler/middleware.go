@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -89,6 +90,55 @@ func (h *Handler) validateAPIKey(key string) (string, bool) {
 	go db.TouchAPIKeyUsed(h.DB, apiKey.ID)
 
 	return apiKey.AccountID, true
+}
+
+// requireAPIAuth validates Bearer API keys and returns JSON errors (not redirects).
+func (h *Handler) requireAPIAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer do_") {
+			renderJSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid or missing API key")
+			return
+		}
+		apiKey := strings.TrimPrefix(authHeader, "Bearer ")
+		accountID, ok := h.validateAPIKey(apiKey)
+		if !ok {
+			renderJSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid or missing API key")
+			return
+		}
+		account, err := db.GetAccountByID(h.DB, accountID)
+		if err != nil || account == nil || !account.Enabled {
+			renderJSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "account is disabled or not found")
+			return
+		}
+		ctx := auth.ContextWithAccountAndRole(r.Context(), accountID, account.Role, account.Name)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// apiRateLimit returns a middleware that rate-limits by IP and sets X-RateLimit-* headers.
+func (h *Handler) apiRateLimit(rl *RateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip := r.RemoteAddr
+			if fwd := r.Header.Get("X-Real-Ip"); fwd != "" {
+				ip = fwd
+			}
+			limiter := rl.Get(ip)
+			tokens := limiter.Tokens()
+			burst := rl.Burst()
+
+			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(burst))
+			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(int(tokens)))
+
+			if !limiter.Allow() {
+				w.Header().Set("Retry-After", "1")
+				renderJSONError(w, http.StatusTooManyRequests, "RATE_LIMITED", "rate limit exceeded")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (h *Handler) RequireSetup(next http.Handler) http.Handler {

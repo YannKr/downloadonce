@@ -2,11 +2,13 @@ package handler
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/csrf"
@@ -210,6 +212,40 @@ func (h *Handler) renderAuth(w http.ResponseWriter, r *http.Request, name, title
 		UserName:      auth.NameFromContext(r.Context()),
 		Data:          data,
 	})
+}
+
+func renderJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("renderJSON encode", "error", err)
+	}
+}
+
+func renderJSONError(w http.ResponseWriter, status int, code, message string) {
+	renderJSON(w, status, map[string]string{"error": message, "code": code})
+}
+
+type paginatedResult struct {
+	Data    any `json:"data"`
+	Total   int `json:"total"`
+	Page    int `json:"page"`
+	PerPage int `json:"per_page"`
+}
+
+func paginate(r *http.Request) (page, perPage int) {
+	page, _ = strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	perPage, _ = strconv.Atoi(r.URL.Query().Get("per_page"))
+	if perPage < 1 {
+		perPage = 50
+	}
+	if perPage > 200 {
+		perPage = 200
+	}
+	return
 }
 
 func setFlash(w http.ResponseWriter, message string) {

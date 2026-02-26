@@ -40,6 +40,43 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 	r.Handle("/static/*", http.StripPrefix("/static/",
 		http.FileServer(http.FS(staticFS))))
 
+	// Public — OpenAPI spec (no auth required)
+	r.Get("/api/v1/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
+		content, err := fs.ReadFile(staticFS, "openapi.yaml")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Write(content)
+	})
+
+	// JSON REST API v1 — Bearer API key auth, separate rate limiter
+	apiRL := NewRateLimiter(2.0, 60) // 2 req/sec sustained, burst 60
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(h.apiRateLimit(apiRL))
+		r.Use(h.requireAPIAuth)
+
+		r.Post("/assets", h.APIAssetUpload)
+		r.Get("/assets", h.APIAssetList)
+		r.Get("/assets/{id}", h.APIAssetGet)
+		r.Delete("/assets/{id}", h.APIAssetDelete)
+
+		r.Post("/recipients", h.APIRecipientCreate)
+		r.Get("/recipients", h.APIRecipientList)
+		r.Delete("/recipients/{id}", h.APIRecipientDelete)
+
+		r.Post("/campaigns", h.APICampaignCreate)
+		r.Get("/campaigns/{id}", h.APICampaignGet)
+		r.Post("/campaigns/{id}/publish", h.APICampaignPublish)
+		r.Get("/campaigns/{id}/tokens", h.APICampaignTokenList)
+		r.Post("/campaigns/{id}/recipients", h.APICampaignAddRecipients)
+		r.Delete("/campaigns/{id}/tokens/{tokenID}", h.APICampaignRevokeToken)
+
+		r.Post("/detect", h.APIDetectSubmit)
+		r.Get("/detect/{jobID}", h.APIDetectGet)
+	})
+
 	// Public routes (rate-limited)
 	r.Group(func(r chi.Router) {
 		r.Use(authRL.Middleware)

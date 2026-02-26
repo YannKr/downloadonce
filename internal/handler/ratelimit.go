@@ -70,6 +70,21 @@ func (rl *RateLimiter) Stop() {
 	close(rl.done)
 }
 
+// Rate returns the rate limit (tokens per second).
+func (rl *RateLimiter) Rate() rate.Limit {
+	return rl.rate
+}
+
+// Burst returns the maximum burst size.
+func (rl *RateLimiter) Burst() int {
+	return rl.burst
+}
+
+// Get returns the rate.Limiter for the given IP, creating one if needed.
+func (rl *RateLimiter) Get(ip string) *rate.Limiter {
+	return rl.getLimiter(ip)
+}
+
 // Middleware returns an HTTP middleware that rate-limits by client IP.
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
