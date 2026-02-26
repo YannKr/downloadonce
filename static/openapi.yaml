@@ -1,0 +1,217 @@
+openapi: "3.0.0"
+info:
+  title: DownloadOnce API
+  version: "1.0.0"
+  description: Token-based file distribution with forensic watermarking
+servers:
+  - url: http://localhost:8080
+    description: Local development
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "do_<64hex>"
+paths:
+  /api/v1/openapi.yaml:
+    get:
+      summary: Get OpenAPI specification
+      security: []
+      responses:
+        "200":
+          description: OpenAPI YAML
+  /api/v1/assets:
+    get:
+      summary: List assets
+      parameters:
+        - in: query
+          name: page
+          schema: {type: integer}
+        - in: query
+          name: per_page
+          schema: {type: integer}
+      responses:
+        "200":
+          description: Asset list
+        "401":
+          description: Unauthorized
+    post:
+      summary: Upload asset
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Bad request
+        "415":
+          description: Unsupported media type
+  /api/v1/assets/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      summary: Get asset
+      responses:
+        "200":
+          description: Asset object
+        "404":
+          description: Not found
+    delete:
+      summary: Delete asset
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Asset not found
+  /api/v1/recipients:
+    get:
+      summary: List recipients
+      responses:
+        "200":
+          description: Recipient list
+    post:
+      summary: Create or get recipient
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name: {type: string}
+                email: {type: string}
+                org: {type: string}
+      responses:
+        "200":
+          description: Existing recipient
+        "201":
+          description: New recipient
+  /api/v1/recipients/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    delete:
+      summary: Delete recipient
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Recipient not found
+  /api/v1/campaigns:
+    post:
+      summary: Create campaign
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, asset_id, recipient_ids]
+              properties:
+                name: {type: string}
+                asset_id: {type: string}
+                recipient_ids: {type: array, items: {type: string}}
+                max_downloads: {type: integer, nullable: true}
+                expires_at: {type: string}
+                visible_wm: {type: boolean}
+                invisible_wm: {type: boolean}
+                auto_publish: {type: boolean}
+      responses:
+        "201":
+          description: Campaign created
+        "400":
+          description: Bad request
+        "404":
+          description: Asset not found
+  /api/v1/campaigns/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      summary: Get campaign
+      responses:
+        "200":
+          description: Campaign object
+        "404":
+          description: Campaign not found
+  /api/v1/campaigns/{id}/publish:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      summary: Publish campaign
+      responses:
+        "200":
+          description: Published
+        "400":
+          description: No recipients
+        "404":
+          description: Not found
+        "409":
+          description: Not in DRAFT state
+  /api/v1/campaigns/{id}/tokens:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      summary: List campaign tokens
+      responses:
+        "200":
+          description: Token list
+        "404":
+          description: Not found
+  /api/v1/campaigns/{id}/recipients:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      summary: Add recipients to campaign
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recipient_ids: {type: array, items: {type: string}}
+      responses:
+        "200":
+          description: Added
+        "409":
+          description: Not in DRAFT state
+  /api/v1/campaigns/{id}/tokens/{tokenID}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+      - {name: tokenID, in: path, required: true, schema: {type: string}}
+    delete:
+      summary: Revoke token
+      responses:
+        "204":
+          description: Revoked
+        "404":
+          description: Not found
+  /api/v1/detect:
+    post:
+      summary: Submit file for watermark detection
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "202":
+          description: Job accepted
+        "400":
+          description: Bad request
+  /api/v1/detect/{jobID}:
+    parameters:
+      - {name: jobID, in: path, required: true, schema: {type: string}}
+    get:
+      summary: Get detection job result
+      responses:
+        "200":
+          description: Result
+        "404":
+          description: Not found
