@@ -2,8 +2,6 @@
 
 **Token-based file distribution with forensic watermarking.** Each recipient gets a unique download link; their copy is invisibly watermarked so leaks can be traced back to the source.
 
-[![CI](https://github.com/YannKr/downloadonce/actions/workflows/ci.yml/badge.svg)](https://github.com/YannKr/downloadonce/actions/workflows/ci.yml)
-[![Release](https://github.com/YannKr/downloadonce/actions/workflows/release.yml/badge.svg)](https://github.com/YannKr/downloadonce/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -91,19 +89,6 @@ docker compose up -d
 
 For HTTPS, uncomment the Caddy service in `docker-compose.yml` and point `Caddyfile` at your domain.
 
-### Docker — pull from registry
-
-```bash
-docker pull ghcr.io/YannKr/downloadonce:latest
-
-docker run -d \
-  -p 8080:8080 \
-  -v downloadonce_data:/data \
-  -e BASE_URL=https://dl.example.com \
-  -e SESSION_SECRET=$(openssl rand -hex 32) \
-  ghcr.io/YannKr/downloadonce:latest
-```
-
 ### Bare metal (Debian/Ubuntu)
 
 Download the latest binary from [GitHub Releases](https://github.com/YannKr/downloadonce/releases), then:
@@ -152,25 +137,17 @@ See [`CLAUDE.md`](CLAUDE.md) for a full developer guide.
 
 ---
 
-## Versioning
+## Releases
 
-Releases follow [Semantic Versioning](https://semver.org/). Docker images are published to the GitHub Container Registry on every tagged release:
+Releases follow [Semantic Versioning](https://semver.org/). Binary builds are available on the [GitHub Releases](https://github.com/YannKr/downloadonce/releases) page.
 
-```
-ghcr.io/YannKr/downloadonce:latest
-ghcr.io/YannKr/downloadonce:v1.2.3
-ghcr.io/YannKr/downloadonce:v1.2
-ghcr.io/YannKr/downloadonce:v1
-```
-
-To release a new version:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The release workflow builds multi-platform images (`linux/amd64`, `linux/arm64`) and pushes them to `ghcr.io` automatically.
+| Version | Highlights |
+|---|---|
+| **v1.1.2** | Fix `auto_publish` API flag skipping watermark job enqueue |
+| **v1.1.1** | Campaign archive, clone on published campaigns, add recipients after publish |
+| **v1.1.0** | REST API with Bearer auth, OpenAPI spec, webhook delivery log + retry, campaign clone, export links, Go-native DWT-DCT-SVD watermarking |
+| **v1.0.1** | Reduce Docker image size from ~2.3 GB to ~1.1 GB |
+| **v1.0.0** | Initial release |
 
 ---
 
