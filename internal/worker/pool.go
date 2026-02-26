@@ -153,16 +153,20 @@ func (p *Pool) processJob(ctx context.Context, job *model.Job) error {
 	// Build the proper 16-byte payload
 	payloadHex := watermark.PayloadHex(job.TokenID, job.CampaignID)
 
-	// Determine if we need an intermediate file for invisible watermark
-	needsInvisible := campaign.InvisibleWM && p.cfg.ScriptsDir != ""
+	// needsInvisible is true if the campaign has invisible watermarking enabled.
+	// The Go-native path is always available; Python is a fallback when configured.
+	needsInvisible := campaign.InvisibleWM
 
-	// For images with invisible watermark: visible → temp PNG (lossless), then invisible → final JPEG
+	// For images with invisible watermark: visible → temp PNG (lossless), then invisible → final JPEG.
 	// Using PNG for the intermediate avoids double JPEG compression which degrades the invisible watermark.
-	// For images without invisible: visible → final directly
+	// For images without invisible: visible → final directly.
 	visibleOutput := outputPath
 	if needsInvisible && job.JobType == "watermark_image" {
 		visibleOutput = outputPath + ".visible.png"
 	}
+
+	// wmAlgorithm records which algorithm was used for this token (written to watermark_index).
+	wmAlgorithm := "dwtDctSvd-go"
 
 	switch job.JobType {
 	case "watermark_video":
@@ -180,8 +184,9 @@ func (p *Pool) processJob(ctx context.Context, job *model.Job) error {
 		db.UpdateJobProgress(p.database, job.ID, 30) // visible done
 		p.publishProgress(job, 30)
 
-		// For video: embed invisible watermarks into extracted key frames
-		if needsInvisible {
+		// For video: embed invisible watermarks into extracted key frames using
+		// Python (video frame embed is not yet ported to Go).
+		if needsInvisible && p.cfg.ScriptsDir != "" {
 			db.UpdateJobProgress(p.database, job.ID, 60) // invisible started
 			p.publishProgress(job, 60)
 			framesDir := filepath.Join(outDir, job.TokenID+"_frames")
@@ -210,17 +215,36 @@ func (p *Pool) processJob(ctx context.Context, job *model.Job) error {
 		db.UpdateJobProgress(p.database, job.ID, 30) // visible done
 		p.publishProgress(job, 30)
 
-		// Chain invisible watermark after visible
+		// Chain invisible watermark after visible.
 		if needsInvisible {
 			db.UpdateJobProgress(p.database, job.ID, 60) // invisible started
 			p.publishProgress(job, 60)
 			jpegQuality := 92
-			if err := watermark.InvisibleImageEmbed(ctx, visibleOutput, outputPath, payloadHex, p.pythonPath(), p.embedScriptPath(), jpegQuality); err != nil {
-				slog.Warn("invisible image embed failed, using visible-only output", "error", err)
-				os.Rename(visibleOutput, outputPath)
+
+			// Try Go-native embed first.
+			goErr := watermark.GoInvisibleImageEmbed(ctx, visibleOutput, outputPath, payloadHex, jpegQuality)
+			if goErr != nil {
+				slog.Warn("go invisible embed failed, falling back to python", "error", goErr)
+				// Fall back to Python if configured.
+				if p.cfg.ScriptsDir != "" {
+					if pyErr := watermark.InvisibleImageEmbed(ctx, visibleOutput, outputPath, payloadHex, p.pythonPath(), p.embedScriptPath(), jpegQuality); pyErr != nil {
+						slog.Warn("python invisible image embed also failed, using visible-only output", "error", pyErr)
+						os.Rename(visibleOutput, outputPath)
+						wmAlgorithm = "visible-only"
+					} else {
+						os.Remove(visibleOutput)
+						wmAlgorithm = "dwtDctSvd-python"
+					}
+				} else {
+					slog.Warn("go invisible embed failed and python not configured, using visible-only output", "error", goErr)
+					os.Rename(visibleOutput, outputPath)
+					wmAlgorithm = "visible-only"
+				}
 			} else {
 				os.Remove(visibleOutput)
+				wmAlgorithm = "dwtDctSvd-go"
 			}
+
 			db.UpdateJobProgress(p.database, job.ID, 90) // invisible done
 			p.publishProgress(job, 90)
 		} else {
@@ -247,7 +271,7 @@ func (p *Pool) processJob(ctx context.Context, job *model.Job) error {
 		return fmt.Errorf("activate token: %w", err)
 	}
 
-	db.InsertWatermarkIndex(p.database, payloadHex, job.TokenID, job.CampaignID, recipient.ID)
+	db.InsertWatermarkIndex(p.database, payloadHex, job.TokenID, job.CampaignID, recipient.ID, wmAlgorithm)
 
 	p.publishTokenReady(job)
 
@@ -281,13 +305,23 @@ func (p *Pool) processDetectJob(ctx context.Context, job *model.Job) error {
 	var err error
 
 	if isVideo {
+		// Video detection still uses Python (video frame detect not yet ported to Go).
 		var payloads []string
 		payloads, err = watermark.InvisibleVideoDetect(ctx, inputPath, p.pythonPath(), p.detectScriptPath(), watermark.PayloadLength)
 		if err == nil && len(payloads) > 0 {
 			payloadHex = watermark.MajorityVote(payloads)
 		}
 	} else {
-		payloadHex, err = watermark.InvisibleImageDetect(ctx, inputPath, p.pythonPath(), p.detectScriptPath(), watermark.PayloadLength)
+		// Try Go-native detection first (handles both Go-embedded and Python-embedded files
+		// once cross-compatibility testing confirms parameter alignment).
+		payloadHex, err = watermark.GoInvisibleImageDetect(ctx, inputPath, watermark.PayloadLength)
+		if err != nil || payloadHex == "" {
+			slog.Debug("go invisible detect failed or empty, falling back to python", "error", err)
+			// Fall back to Python detection for legacy files while Python is available.
+			if p.cfg.ScriptsDir != "" {
+				payloadHex, err = watermark.InvisibleImageDetect(ctx, inputPath, p.pythonPath(), p.detectScriptPath(), watermark.PayloadLength)
+			}
+		}
 	}
 
 	if err != nil {
