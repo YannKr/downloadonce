@@ -7,7 +7,7 @@ type Account struct {
 	Email             string
 	Name              string
 	PasswordHash      string
-	Role              string // "admin" or "member"
+	Role              string
 	Enabled           bool
 	NotifyOnDownload  bool
 	CreatedAt         time.Time
@@ -24,7 +24,7 @@ type Asset struct {
 	ID           string
 	AccountID    string
 	OriginalName string
-	AssetType    string // "video" or "image"
+	AssetType    string
 	OriginalPath string
 	FileSize     int64
 	SHA256       string
@@ -53,7 +53,7 @@ type Campaign struct {
 	ExpiresAt    *time.Time
 	VisibleWM    bool
 	InvisibleWM  bool
-	State        string // DRAFT, PROCESSING, READY, EXPIRED
+	State        string
 	CreatedAt    time.Time
 	PublishedAt  *time.Time
 }
@@ -71,18 +71,18 @@ type CampaignSummary struct {
 }
 
 type DownloadToken struct {
-	ID              string
-	CampaignID      string
-	RecipientID     string
-	MaxDownloads    *int
-	DownloadCount   int
-	State           string // PENDING, ACTIVE, CONSUMED, EXPIRED
-	WatermarkedPath *string
+	ID               string
+	CampaignID       string
+	RecipientID      string
+	MaxDownloads     *int
+	DownloadCount    int
+	State            string
+	WatermarkedPath  *string
 	WatermarkPayload []byte
-	SHA256Output    *string
-	OutputSizeBytes *int64
-	ExpiresAt       *time.Time
-	CreatedAt       time.Time
+	SHA256Output     *string
+	OutputSizeBytes  *int64
+	ExpiresAt        *time.Time
+	CreatedAt        time.Time
 }
 
 type TokenWithRecipient struct {
@@ -107,14 +107,14 @@ type DownloadEvent struct {
 
 type Job struct {
 	ID           string
-	JobType      string // "watermark_video", "watermark_image", "detect"
+	JobType      string
 	CampaignID   string
 	TokenID      string
-	State        string // PENDING, RUNNING, COMPLETED, FAILED
+	State        string
 	Progress     int
 	ErrorMessage string
-	InputPath    string // for detect jobs: path to the uploaded suspect file
-	ResultData   string // for detect jobs: JSON with detection results
+	InputPath    string
+	ResultData   string
 	CreatedAt    time.Time
 	StartedAt    *time.Time
 	CompletedAt  *time.Time
@@ -135,9 +135,25 @@ type Webhook struct {
 	AccountID string
 	URL       string
 	Secret    string
-	Events    string // comma-separated: "download", "campaign_ready"
+	Events    string
 	Enabled   bool
 	CreatedAt time.Time
+}
+
+type WebhookDelivery struct {
+	ID                  string
+	WebhookID           string
+	EventType           string
+	EventID             string
+	PayloadJSON         string
+	AttemptNumber       int
+	ResponseStatus      *int
+	ResponseBodyPreview string
+	ErrorMessage        string
+	State               string
+	NextRetryAt         *time.Time
+	DeliveredAt         *time.Time
+	CreatedAt           time.Time
 }
 
 type UploadSession struct {
@@ -149,7 +165,7 @@ type UploadSession struct {
 	ChunkSize      int64
 	TotalChunks    int
 	ReceivedChunks []int
-	Status         string // PENDING, COMPLETE, EXPIRED
+	Status         string
 	StoragePath    string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

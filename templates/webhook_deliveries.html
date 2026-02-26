@@ -1,0 +1,83 @@
+{{define "content"}}
+<div class="page-header">
+  <div>
+    <h1>Delivery History</h1>
+    <p class="text-muted">{{.Data.Webhook.URL}}</p>
+  </div>
+  <a href="/settings" class="btn">Back to Settings</a>
+</div>
+
+{{if .Data.Deliveries}}
+<p class="text-muted">Showing {{len .Data.Deliveries}} of {{.Data.Total}} deliveries (page {{.Data.Page}} of {{.Data.TotalPages}})</p>
+<table>
+  <thead>
+    <tr>
+      <th>Timestamp</th>
+      <th>Event Type</th>
+      <th>Attempt</th>
+      <th>HTTP Status</th>
+      <th>State</th>
+      <th>Error</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Data.Deliveries}}
+    <tr>
+      <td style="white-space:nowrap">{{formatTime .CreatedAt}}</td>
+      <td><code>{{.EventType}}</code></td>
+      <td>{{.AttemptNumber}}</td>
+      <td>
+        {{if .ResponseStatus}}
+          <code>{{derefInt .ResponseStatus}}</code>
+        {{else}}
+          <span class="text-muted">conn error</span>
+        {{end}}
+      </td>
+      <td>
+        {{if eq .State "delivered"}}
+          <span class="badge badge-green">delivered</span>
+        {{else if eq .State "failed"}}
+          <span class="badge badge-yellow">failed</span>
+        {{else if eq .State "exhausted"}}
+          <span class="badge badge-red">exhausted</span>
+        {{else}}
+          <span class="badge badge-gray">{{.State}}</span>
+        {{end}}
+      </td>
+      <td title="{{.ErrorMessage}}">
+        {{if .ErrorMessage}}
+          {{.ErrorMessage}}
+        {{else}}
+          <span class="text-muted">none</span>
+        {{end}}
+      </td>
+      <td>
+        {{if or (eq .State "exhausted") (eq .State "delivered")}}
+        <form method="POST" action="/settings/webhooks/{{$.Data.Webhook.ID}}/deliveries/{{.ID}}/replay">
+          {{$.CSRFField}}
+          <button type="submit" class="btn btn-sm btn-secondary">Replay</button>
+        </form>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+
+{{if gt .Data.TotalPages 1}}
+<div style="margin-top:1rem;display:flex;gap:8px;align-items:center">
+  {{if .Data.PrevPage}}
+  <a href="?page={{.Data.PrevPage}}" class="btn btn-sm">Previous</a>
+  {{end}}
+  <span>Page {{.Data.Page}} of {{.Data.TotalPages}}</span>
+  {{if .Data.NextPage}}
+  <a href="?page={{.Data.NextPage}}" class="btn btn-sm">Next</a>
+  {{end}}
+</div>
+{{end}}
+
+{{else}}
+<p class="text-muted">No delivery records yet for this webhook.</p>
+{{end}}
+{{end}}

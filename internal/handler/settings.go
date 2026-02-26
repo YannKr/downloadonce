@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -11,11 +13,13 @@ import (
 )
 
 type settingsData struct {
-	APIKeys          []model.APIKey
-	Webhooks         []model.Webhook
-	NewAPIKey        string // shown once after creation
-	SMTPEnabled      bool
-	NotifyOnDownload bool
+	APIKeys             []model.APIKey
+	Webhooks            []model.Webhook
+	NewAPIKey           string
+	SMTPEnabled         bool
+	NotifyOnDownload    bool
+	WebhookLastDelivery map[string]*model.WebhookDelivery
+	ExhaustedDeliveries int
 }
 
 func (h *Handler) SettingsPage(w http.ResponseWriter, r *http.Request) {
@@ -29,11 +33,16 @@ func (h *Handler) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		notifyOn = account.NotifyOnDownload
 	}
 
+	lastDelivery, _ := db.GetLastDeliveryPerWebhook(h.DB, accountID)
+	exhausted, _ := db.CountExhaustedDeliveriesLast24h(h.DB, accountID)
+
 	h.renderAuth(w, r, "settings.html", "Settings", settingsData{
-		APIKeys:          keys,
-		Webhooks:         webhooks,
-		SMTPEnabled:      h.Cfg.SMTPHost != "",
-		NotifyOnDownload: notifyOn,
+		APIKeys:             keys,
+		Webhooks:            webhooks,
+		SMTPEnabled:         h.Cfg.SMTPHost != "",
+		NotifyOnDownload:    notifyOn,
+		WebhookLastDelivery: lastDelivery,
+		ExhaustedDeliveries: exhausted,
 	})
 }
 
@@ -44,7 +53,6 @@ func (h *Handler) APIKeyCreate(w http.ResponseWriter, r *http.Request) {
 		name = "Unnamed key"
 	}
 
-	// Generate key: do_ + 32 hex bytes (64 chars)
 	rawKey, err := auth.GenerateToken(32)
 	if err != nil {
 		http.Error(w, "Internal error", 500)
@@ -73,7 +81,6 @@ func (h *Handler) APIKeyCreate(w http.ResponseWriter, r *http.Request) {
 
 	db.InsertAuditLog(h.DB, accountID, "api_key_created", "api_key", apiKey.ID, name, r.RemoteAddr)
 
-	// Show the key once
 	keys, _ := db.ListAPIKeys(h.DB, accountID)
 	webhooks, _ := db.ListWebhooks(h.DB, accountID)
 
@@ -82,7 +89,7 @@ func (h *Handler) APIKeyCreate(w http.ResponseWriter, r *http.Request) {
 		Authenticated: true,
 		IsAdmin:       auth.IsAdmin(r.Context()),
 		UserName:      auth.NameFromContext(r.Context()),
-		Flash:         "API key created. Copy it now — it won't be shown again.",
+		Flash:         "API key created. Copy it now it won't be shown again.",
 		Data: settingsData{
 			APIKeys:     keys,
 			Webhooks:    webhooks,
@@ -162,4 +169,99 @@ func (h *Handler) NotifyOnDownloadUpdate(w http.ResponseWriter, r *http.Request)
 	db.UpdateAccountNotifyOnDownload(h.DB, accountID, notify)
 	setFlash(w, "Notification preference saved.")
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+}
+
+type deliveriesData struct {
+	Webhook    model.Webhook
+	Deliveries []model.WebhookDelivery
+	Total      int
+	Page       int
+	PerPage    int
+	TotalPages int
+	PrevPage   int
+	NextPage   int
+}
+
+func (h *Handler) WebhookDeliveries(w http.ResponseWriter, r *http.Request) {
+	whID := chi.URLParam(r, "id")
+	accountID := auth.AccountFromContext(r.Context())
+
+	wh, err := db.GetWebhookByID(h.DB, whID)
+	if err != nil || wh == nil || (wh.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
+	page := 1
+	if p, _ := strconv.Atoi(r.URL.Query().Get("page")); p > 0 {
+		page = p
+	}
+	perPage := 50
+	offset := (page - 1) * perPage
+
+	total, _ := db.CountWebhookDeliveries(h.DB, whID)
+	deliveries, err := db.ListWebhookDeliveries(h.DB, whID, perPage, offset)
+	if err != nil {
+		slog.Error("list webhook deliveries", "error", err)
+		http.Error(w, "Internal error", 500)
+		return
+	}
+
+	totalPages := (total + perPage - 1) / perPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	prevPage := 0
+	if page > 1 {
+		prevPage = page - 1
+	}
+	nextPage := 0
+	if page < totalPages {
+		nextPage = page + 1
+	}
+
+	h.renderAuth(w, r, "webhook_deliveries.html", "Delivery History", deliveriesData{
+		Webhook:    *wh,
+		Deliveries: deliveries,
+		Total:      total,
+		Page:       page,
+		PerPage:    perPage,
+		TotalPages: totalPages,
+		PrevPage:   prevPage,
+		NextPage:   nextPage,
+	})
+}
+
+func (h *Handler) WebhookDeliveryReplay(w http.ResponseWriter, r *http.Request) {
+	whID := chi.URLParam(r, "id")
+	deliveryID := chi.URLParam(r, "deliveryID")
+	accountID := auth.AccountFromContext(r.Context())
+
+	wh, err := db.GetWebhookByID(h.DB, whID)
+	if err != nil || wh == nil || (wh.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
+	delivery, err := db.GetWebhookDelivery(h.DB, deliveryID)
+	if err != nil || delivery == nil || delivery.WebhookID != whID {
+		http.NotFound(w, r)
+		return
+	}
+
+	if delivery.State != "exhausted" && delivery.State != "delivered" {
+		http.Error(w, "Only exhausted or delivered deliveries can be replayed", http.StatusBadRequest)
+		return
+	}
+
+	if err := db.ReplayWebhookDelivery(h.DB, deliveryID); err != nil {
+		slog.Error("replay webhook delivery", "error", err)
+		http.Error(w, "Internal error", 500)
+		return
+	}
+
+	db.InsertAuditLog(h.DB, accountID, "webhook_delivery_replayed", "webhook_delivery", deliveryID, wh.URL, r.RemoteAddr)
+	setFlash(w, "Delivery re-queued.")
+	http.Redirect(w, r, "/settings/webhooks/"+whID+"/deliveries", http.StatusSeeOther)
 }

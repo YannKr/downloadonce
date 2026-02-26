@@ -37,7 +37,6 @@ func (c *Cleaner) Stop() {
 func (c *Cleaner) loop(ctx context.Context) {
 	defer close(c.done)
 
-	// Run once at startup
 	c.runOnce()
 
 	ticker := time.NewTicker(c.Interval)
@@ -54,7 +53,6 @@ func (c *Cleaner) loop(ctx context.Context) {
 }
 
 func (c *Cleaner) runOnce() {
-	// Expire campaigns
 	campaigns, err := db.ListExpiredCampaigns(c.DB)
 	if err != nil {
 		slog.Error("cleanup: list expired campaigns", "error", err)
@@ -74,7 +72,6 @@ func (c *Cleaner) runOnce() {
 		}
 	}
 
-	// Expire upload sessions
 	sessions, sessErr := db.ListExpiredUploadSessions(c.DB)
 	if sessErr != nil {
 		slog.Error("cleanup: list expired upload sessions", "error", sessErr)
@@ -92,5 +89,12 @@ func (c *Cleaner) runOnce() {
 				slog.Info("cleanup: removed upload session files", "session", session.ID)
 			}
 		}
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -90)
+	if n, err := db.PruneOldWebhookDeliveries(c.DB, cutoff); err != nil {
+		slog.Error("cleanup: prune webhook deliveries", "error", err)
+	} else if n > 0 {
+		slog.Info("cleanup: pruned old webhook deliveries", "count", n)
 	}
 }
