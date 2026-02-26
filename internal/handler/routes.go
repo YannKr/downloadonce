@@ -18,7 +18,6 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 	r.Use(middleware.RealIP)
 	r.Use(h.RequireSetup)
 
-	// CSRF protection — exempt API key (Bearer) requests
 	csrfProtect := csrf.Protect(
 		[]byte(h.Cfg.SessionSecret),
 		csrf.Secure(strings.HasPrefix(h.Cfg.BaseURL, "https")),
@@ -36,11 +35,44 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 		})
 	})
 
-	// Static files
 	r.Handle("/static/*", http.StripPrefix("/static/",
 		http.FileServer(http.FS(staticFS))))
 
-	// Public routes (rate-limited)
+	r.Get("/api/v1/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
+		content, err := fs.ReadFile(staticFS, "openapi.yaml")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Write(content)
+	})
+
+	apiRL := NewRateLimiter(2.0, 60)
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(h.apiRateLimit(apiRL))
+		r.Use(h.requireAPIAuth)
+
+		r.Post("/assets", h.APIAssetUpload)
+		r.Get("/assets", h.APIAssetList)
+		r.Get("/assets/{id}", h.APIAssetGet)
+		r.Delete("/assets/{id}", h.APIAssetDelete)
+
+		r.Post("/recipients", h.APIRecipientCreate)
+		r.Get("/recipients", h.APIRecipientList)
+		r.Delete("/recipients/{id}", h.APIRecipientDelete)
+
+		r.Post("/campaigns", h.APICampaignCreate)
+		r.Get("/campaigns/{id}", h.APICampaignGet)
+		r.Post("/campaigns/{id}/publish", h.APICampaignPublish)
+		r.Get("/campaigns/{id}/tokens", h.APICampaignTokenList)
+		r.Post("/campaigns/{id}/recipients", h.APICampaignAddRecipients)
+		r.Delete("/campaigns/{id}/tokens/{tokenID}", h.APICampaignRevokeToken)
+
+		r.Post("/detect", h.APIDetectSubmit)
+		r.Get("/detect/{jobID}", h.APIDetectGet)
+	})
+
 	r.Group(func(r chi.Router) {
 		r.Use(authRL.Middleware)
 		r.Get("/login", h.LoginForm)
@@ -55,12 +87,10 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 		r.Post("/reset-password", h.ResetPasswordSubmit)
 	})
 
-	// Public download routes
 	r.Get("/d/{token}", h.DownloadPage)
 	r.Get("/d/{token}/file", h.DownloadFile)
 	r.Get("/d/{token}/events", h.TokenSSE)
 
-	// Authenticated routes
 	r.Group(func(r chi.Router) {
 		r.Use(h.RequireAuth)
 
@@ -82,7 +112,6 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 		r.Post("/recipients/import", h.RecipientImport)
 		r.Post("/recipients/{id}/delete", h.RecipientDelete)
 
-		// Recipient groups
 		r.Get("/recipients/groups", h.GroupList)
 		r.Post("/recipients/groups", h.GroupCreate)
 		r.Get("/recipients/groups/{id}", h.GroupDetail)
@@ -113,15 +142,15 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 		r.Post("/settings/apikeys/{id}/delete", h.APIKeyDelete)
 		r.Post("/settings/webhooks", h.WebhookCreate)
 		r.Post("/settings/webhooks/{id}/delete", h.WebhookDelete)
+		r.Get("/settings/webhooks/{id}/deliveries", h.WebhookDeliveries)
+		r.Post("/settings/webhooks/{id}/deliveries/{deliveryID}/replay", h.WebhookDeliveryReplay)
 
-		// Chunked upload API
 		r.Post("/upload/chunks/init", h.UploadInit)
 		r.Put("/upload/chunks/{sessionID}/{chunkIndex}", h.UploadChunk)
 		r.Get("/upload/chunks/{sessionID}/status", h.UploadStatus)
 		r.Post("/upload/chunks/{sessionID}/complete", h.UploadComplete)
 		r.Delete("/upload/chunks/{sessionID}", h.UploadCancel)
 
-		// Admin routes
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(h.RequireAdmin)
 			r.Get("/users", h.AdminUsers)

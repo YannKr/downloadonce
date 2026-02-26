@@ -1,6 +1,13 @@
 {{define "content"}}
 <h1>Settings</h1>
 
+{{if gt .Data.ExhaustedDeliveries 0}}
+<div class="alert alert-error">
+  <strong>Webhook Warning:</strong> {{.Data.ExhaustedDeliveries}} webhook delivery attempt(s) have been exhausted in the last 24 hours.
+  Check your webhook configurations and <a href="/settings">view delivery history</a> for details.
+</div>
+{{end}}
+
 {{if .Data.NewAPIKey}}
 <div class="alert alert-success">
   <strong>New API Key:</strong>
@@ -48,22 +55,38 @@
 <hr>
 
 <h2>Webhooks</h2>
-<p class="text-muted">Receive HTTP POST notifications when events occur. Payloads are signed with HMAC-SHA256.</p>
+<p class="text-muted">Receive HTTP POST notifications when events occur. Payloads are signed with HMAC-SHA256 using the header <code>X-DownloadOnce-Signature</code>.</p>
 
 {{if .Data.Webhooks}}
 <table>
   <thead>
-    <tr><th>URL</th><th>Events</th><th>Secret</th><th>Created</th><th></th></tr>
+    <tr><th>URL</th><th>Events</th><th>Secret</th><th>Created</th><th>Last Delivery</th><th>Actions</th></tr>
   </thead>
   <tbody>
     {{range .Data.Webhooks}}
     <tr>
-      <td class="text-truncate" style="max-width:300px">{{.URL}}</td>
+      <td class="text-truncate" style="max-width:250px">{{.URL}}</td>
       <td>{{.Events}}</td>
       <td><code>{{shortenID .Secret}}...</code></td>
       <td>{{formatTime .CreatedAt}}</td>
       <td>
-        <form method="POST" action="/settings/webhooks/{{.ID}}/delete"
+        {{with index $.Data.WebhookLastDelivery .ID}}
+          {{if eq .State "delivered"}}
+            <span class="badge badge-green" title="{{formatTime .CreatedAt}}">OK {{formatTime .CreatedAt}}</span>
+          {{else if eq .State "exhausted"}}
+            <span class="badge badge-red" title="{{.ErrorMessage}}">Failed {{formatTime .CreatedAt}}</span>
+          {{else if eq .State "failed"}}
+            <span class="badge badge-yellow" title="{{.ErrorMessage}}">Retrying</span>
+          {{else}}
+            <span class="badge badge-gray">{{.State}}</span>
+          {{end}}
+        {{else}}
+          <span class="text-muted">No attempts</span>
+        {{end}}
+      </td>
+      <td style="white-space:nowrap">
+        <a href="/settings/webhooks/{{.ID}}/deliveries" class="btn btn-sm btn-secondary">History</a>
+        <form method="POST" action="/settings/webhooks/{{.ID}}/delete" style="display:inline"
               onsubmit="return confirm('Delete this webhook?')">
           {{$.CSRFField}}
           <button type="submit" class="btn btn-sm btn-danger">Delete</button>
