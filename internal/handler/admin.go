@@ -153,7 +153,7 @@ func (h *Handler) AdminPromoteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AdminCampaigns(w http.ResponseWriter, r *http.Request) {
-	campaigns, err := db.ListCampaigns(h.DB, "", true)
+	campaigns, err := db.ListCampaigns(h.DB, "", true, false)
 	if err != nil {
 		slog.Error("list all campaigns", "error", err)
 		http.Error(w, "Internal error", 500)

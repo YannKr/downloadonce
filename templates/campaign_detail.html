@@ -9,10 +9,17 @@
       {{.CSRFField}}
       <button type="submit" class="btn btn-primary">Publish</button>
     </form>
+    {{end}}
+    {{if ne .Data.Campaign.State "ARCHIVED"}}
     <form method="POST" action="/campaigns/{{.Data.Campaign.ID}}/clone" style="display:inline"
-          onsubmit="return confirm(\"Clone this campaign?\n\nThis will create a new draft with the same recipients and settings.\")">
+          onsubmit="return confirm('Clone this campaign? This will create a new draft with the same recipients and settings.')">
       {{.CSRFField}}
       <button type="submit" class="btn btn-secondary">Clone Campaign</button>
+    </form>
+    <form method="POST" action="/campaigns/{{.Data.Campaign.ID}}/archive" style="display:inline"
+          onsubmit="return confirm('Archive this campaign? It will be hidden from the main list.')">
+      {{.CSRFField}}
+      <button type="submit" class="btn btn-secondary">Archive</button>
     </form>
     {{end}}
   </div>
@@ -94,19 +101,17 @@ async function copyLinksToClipboard() {
       <td>{{.RecipientEmail}}</td>
       <td id="state-{{.ID}}">{{stateBadge .State}}</td>
       <td id="progress-cell-{{.ID}}">
+        {{if eq .State "ACTIVE"}}
+        <span class="text-muted">Done</span>
+        {{else}}
         {{with index $.Data.Jobs $tokenID}}
         <div class="progress-bar" id="progress-{{$tokenID}}">
           <div class="progress-fill" style="width: {{.Progress}}%"></div>
           <span class="progress-text">{{.Progress}}%</span>
         </div>
         {{else}}
-          {{if eq .State "ACTIVE"}}
-          <span class="text-muted">Done</span>
-          {{else if eq .State "PENDING"}}
-          <span class="text-muted">--</span>
-          {{else}}
-          <span class="text-muted">--</span>
-          {{end}}
+        <span class="text-muted">--</span>
+        {{end}}
         {{end}}
       </td>
       <td>{{.DownloadCount}}</td>
@@ -160,6 +165,24 @@ async function copyLinksToClipboard() {
     {{end}}
   </tbody>
 </table>
+
+{{if and (ne .Data.Campaign.State "ARCHIVED") (ne .Data.Campaign.State "EXPIRED")}}
+{{if .Data.AvailableRecipients}}
+<h2>Add Recipients</h2>
+<form method="POST" action="/campaigns/{{.Data.Campaign.ID}}/add-recipients">
+  {{.CSRFField}}
+  <div class="checkbox-group" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:0.5rem;margin-bottom:0.75rem;">
+    {{range .Data.AvailableRecipients}}
+    <label class="checkbox-label">
+      <input type="checkbox" name="recipient_ids" value="{{.ID}}">
+      {{.Name}} &lt;{{.Email}}&gt;{{if .Org}} ({{.Org}}){{end}}
+    </label>
+    {{end}}
+  </div>
+  <button type="submit" class="btn btn-primary">Add Selected</button>
+</form>
+{{end}}
+{{end}}
 
 <a href="/campaigns" class="btn btn-secondary">Back to Campaigns</a>
 

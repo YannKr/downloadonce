@@ -55,7 +55,7 @@ func GetCampaign(database *sql.DB, id string) (*model.Campaign, error) {
 	return c, nil
 }
 
-func ListCampaigns(database *sql.DB, accountID string, showAll bool) ([]model.CampaignSummary, error) {
+func ListCampaigns(database *sql.DB, accountID string, showAll bool, showArchived bool) ([]model.CampaignSummary, error) {
 	query := `
 		SELECT c.id, c.account_id, c.asset_id, c.name, c.max_downloads, c.expires_at,
 		  c.visible_wm, c.invisible_wm, c.state, c.created_at, c.published_at,
@@ -71,13 +71,18 @@ func ListCampaigns(database *sql.DB, accountID string, showAll bool) ([]model.Ca
 		JOIN assets a ON a.id = c.asset_id
 		JOIN accounts acc ON acc.id = c.account_id`
 
+	archivedFilter := ` AND c.state != 'ARCHIVED'`
+	if showArchived {
+		archivedFilter = ` AND c.state = 'ARCHIVED'`
+	}
+
 	var rows *sql.Rows
 	var err error
 	if showAll {
-		query += ` ORDER BY c.created_at DESC`
+		query += ` WHERE 1=1` + archivedFilter + ` ORDER BY c.created_at DESC`
 		rows, err = database.Query(query)
 	} else {
-		query += ` WHERE c.account_id = ? ORDER BY c.created_at DESC`
+		query += ` WHERE c.account_id = ?` + archivedFilter + ` ORDER BY c.created_at DESC`
 		rows, err = database.Query(query, accountID)
 	}
 	if err != nil {
@@ -126,6 +131,14 @@ func UpdateCampaignState(database *sql.DB, id, state string) error {
 func SetCampaignPublished(database *sql.DB, id string) error {
 	_, err := database.Exec(
 		`UPDATE campaigns SET state = 'PROCESSING', published_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+		id,
+	)
+	return err
+}
+
+func SetCampaignReady(database *sql.DB, id string) error {
+	_, err := database.Exec(
+		`UPDATE campaigns SET state = 'READY' WHERE id = ?`,
 		id,
 	)
 	return err
@@ -183,6 +196,11 @@ func ListExpiredCampaigns(database *sql.DB) ([]model.Campaign, error) {
 		campaigns = append(campaigns, c)
 	}
 	return campaigns, rows.Err()
+}
+
+func ArchiveCampaign(database *sql.DB, id string) error {
+	_, err := database.Exec(`UPDATE campaigns SET state = 'ARCHIVED' WHERE id = ?`, id)
+	return err
 }
 
 func ExpireCampaignAndTokens(database *sql.DB, campaignID string) error {

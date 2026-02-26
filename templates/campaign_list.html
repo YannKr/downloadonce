@@ -1,10 +1,17 @@
 {{define "content"}}
 <div class="page-header">
-  <h1>Campaigns</h1>
-  <a href="/campaigns/new" class="btn btn-primary">New Campaign</a>
+  <h1>{{if .Data.ShowArchived}}Archived Campaigns{{else}}Campaigns{{end}}</h1>
+  <div>
+    {{if .Data.ShowArchived}}
+    <a href="/campaigns" class="btn btn-secondary">Active Campaigns</a>
+    {{else}}
+    <a href="/campaigns?archived=1" class="btn btn-secondary">Archived</a>
+    <a href="/campaigns/new" class="btn btn-primary">New Campaign</a>
+    {{end}}
+  </div>
 </div>
 
-{{if .Data}}
+{{if .Data.Campaigns}}
 <table>
   <thead>
     <tr>
@@ -17,7 +24,7 @@
     </tr>
   </thead>
   <tbody>
-    {{range .Data}}
+    {{range .Data.Campaigns}}
     <tr>
       <td><a href="/campaigns/{{.ID}}">{{.Name}}</a></td>
       <td>{{stateBadge .State}}</td>
@@ -30,6 +37,6 @@
   </tbody>
 </table>
 {{else}}
-<p class="text-muted">No campaigns yet.</p>
+<p class="text-muted">{{if .Data.ShowArchived}}No archived campaigns.{{else}}No campaigns yet.{{end}}</p>
 {{end}}
 {{end}}

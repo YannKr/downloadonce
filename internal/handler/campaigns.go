@@ -31,22 +31,27 @@ type campaignNewData struct {
 }
 
 type campaignDetailData struct {
-	Campaign model.CampaignSummary
-	Asset    model.Asset
-	Tokens   []model.TokenWithRecipient
-	Jobs     map[string]model.Job // keyed by token_id
-	BaseURL  string
+	Campaign            model.CampaignSummary
+	Asset               model.Asset
+	Tokens              []model.TokenWithRecipient
+	Jobs                map[string]model.Job // keyed by token_id
+	BaseURL             string
+	AvailableRecipients []model.Recipient
 }
 
 func (h *Handler) CampaignList(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
-	campaigns, err := db.ListCampaigns(h.DB, accountID, false)
+	showArchived := r.URL.Query().Get("archived") == "1"
+	campaigns, err := db.ListCampaigns(h.DB, accountID, false, showArchived)
 	if err != nil {
 		slog.Error("list campaigns", "error", err)
 		http.Error(w, "Internal error", 500)
 		return
 	}
-	h.renderAuth(w, r, "campaign_list.html", "Campaigns", campaigns)
+	h.renderAuth(w, r, "campaign_list.html", "Campaigns", map[string]interface{}{
+		"Campaigns":    campaigns,
+		"ShowArchived": showArchived,
+	})
 }
 
 func (h *Handler) CampaignNewForm(w http.ResponseWriter, r *http.Request) {
@@ -195,7 +200,7 @@ func (h *Handler) CampaignDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get campaign summary for display (use showAll for admin, filtered for member)
-	campaigns, _ := db.ListCampaigns(h.DB, accountID, isAdmin)
+	campaigns, _ := db.ListCampaigns(h.DB, accountID, isAdmin, false)
 	var cs *model.CampaignSummary
 	for i := range campaigns {
 		if campaigns[i].ID == id {
@@ -233,12 +238,26 @@ func (h *Handler) CampaignDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Build set of already-added recipient IDs for filtering
+	added := make(map[string]struct{}, len(tokens))
+	for _, t := range tokens {
+		added[t.RecipientID] = struct{}{}
+	}
+	allRecipients, _ := db.ListRecipients(h.DB)
+	var available []model.Recipient
+	for _, rec := range allRecipients {
+		if _, ok := added[rec.ID]; !ok {
+			available = append(available, rec)
+		}
+	}
+
 	h.renderAuth(w, r, "campaign_detail.html", cs.Name, campaignDetailData{
-		Campaign: *cs,
-		Asset:    *asset,
-		Tokens:   tokens,
-		Jobs:     jobMap,
-		BaseURL:  h.Cfg.BaseURL,
+		Campaign:            *cs,
+		Asset:               *asset,
+		Tokens:              tokens,
+		Jobs:                jobMap,
+		BaseURL:             h.Cfg.BaseURL,
+		AvailableRecipients: available,
 	})
 }
 
@@ -263,8 +282,30 @@ func (h *Handler) CampaignPublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set campaign directly to READY — watermarking happens on-demand
-	db.SetCampaignPublishedReady(h.DB, id)
+	asset, err := db.GetAsset(h.DB, campaign.AssetID)
+	if err != nil || asset == nil {
+		http.Error(w, "Asset not found", 500)
+		return
+	}
+
+	jobType := "watermark_video"
+	if asset.AssetType == "image" {
+		jobType = "watermark_image"
+	}
+
+	// Set campaign to PROCESSING and enqueue one watermark job per token
+	db.SetCampaignPublished(h.DB, id)
+	for _, t := range tokens {
+		job := &model.Job{
+			ID:         uuid.New().String(),
+			JobType:    jobType,
+			CampaignID: id,
+			TokenID:    t.ID,
+		}
+		if err := db.EnqueueJob(h.DB, job); err != nil {
+			slog.Error("enqueue watermark job", "error", err, "token", t.ID)
+		}
+	}
 	db.InsertAuditLog(h.DB, accountID, "campaign_published", "campaign", id, campaign.Name, r.RemoteAddr)
 
 	// Send download link emails if SMTP is configured
@@ -279,7 +320,7 @@ func (h *Handler) CampaignPublish(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	setFlash(w, "Campaign published.")
+	setFlash(w, "Campaign published. Watermarking in progress.")
 	http.Redirect(w, r, "/campaigns/"+id, http.StatusSeeOther)
 }
 
@@ -429,4 +470,104 @@ func (h *Handler) CampaignExportLinks(w http.ResponseWriter, r *http.Request) {
 				t.RecipientName, t.RecipientEmail, h.Cfg.BaseURL+"/d/"+t.ID)
 		}
 	}
+}
+
+func (h *Handler) CampaignAddRecipients(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	accountID := auth.AccountFromContext(r.Context())
+
+	campaign, err := db.GetCampaign(h.DB, id)
+	if err != nil || campaign == nil || (campaign.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
+	switch campaign.State {
+	case "DRAFT", "PROCESSING", "READY":
+		// allowed
+	default:
+		http.Error(w, "Cannot add recipients to a campaign in state "+campaign.State, http.StatusBadRequest)
+		return
+	}
+
+	r.ParseForm()
+	recipientIDs := r.Form["recipient_ids"]
+	if len(recipientIDs) == 0 {
+		setFlash(w, "No recipients selected.")
+		http.Redirect(w, r, "/campaigns/"+id, http.StatusSeeOther)
+		return
+	}
+
+	asset, err := db.GetAsset(h.DB, campaign.AssetID)
+	if err != nil || asset == nil {
+		http.Error(w, "Asset not found", http.StatusInternalServerError)
+		return
+	}
+
+	jobType := "watermark_video"
+	if asset.AssetType == "image" {
+		jobType = "watermark_image"
+	}
+
+	added := 0
+	for _, rid := range recipientIDs {
+		token := &model.DownloadToken{
+			ID:           uuid.New().String(),
+			CampaignID:   campaign.ID,
+			RecipientID:  rid,
+			MaxDownloads: campaign.MaxDownloads,
+			State:        "PENDING",
+			ExpiresAt:    campaign.ExpiresAt,
+		}
+		if err := db.CreateToken(h.DB, token); err != nil {
+			slog.Error("add recipient token", "error", err, "recipient_id", rid)
+			continue
+		}
+		// For published campaigns, immediately enqueue a watermark job
+		if campaign.State == "PROCESSING" || campaign.State == "READY" {
+			job := &model.Job{
+				ID:         uuid.New().String(),
+				JobType:    jobType,
+				CampaignID: campaign.ID,
+				TokenID:    token.ID,
+			}
+			if err := db.EnqueueJob(h.DB, job); err != nil {
+				slog.Error("enqueue watermark job for new token", "error", err, "token", token.ID)
+			}
+		}
+		added++
+	}
+
+	// Put campaign back to PROCESSING so the worker picks up the new jobs
+	if added > 0 && campaign.State == "READY" {
+		db.UpdateCampaignState(h.DB, id, "PROCESSING")
+	}
+
+	db.InsertAuditLog(h.DB, accountID, "recipients_added", "campaign", id, campaign.Name, r.RemoteAddr)
+	setFlash(w, fmt.Sprintf("%d recipient(s) added.", added))
+	http.Redirect(w, r, "/campaigns/"+id, http.StatusSeeOther)
+}
+
+func (h *Handler) CampaignArchive(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	accountID := auth.AccountFromContext(r.Context())
+
+	campaign, err := db.GetCampaign(h.DB, id)
+	if err != nil || campaign == nil || (campaign.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+	if campaign.State == "ARCHIVED" {
+		http.Redirect(w, r, "/campaigns", http.StatusSeeOther)
+		return
+	}
+
+	if err := db.ArchiveCampaign(h.DB, id); err != nil {
+		slog.Error("archive campaign", "error", err)
+		http.Error(w, "Internal error", 500)
+		return
+	}
+	db.InsertAuditLog(h.DB, accountID, "campaign_archived", "campaign", id, campaign.Name, r.RemoteAddr)
+	setFlash(w, "Campaign archived.")
+	http.Redirect(w, r, "/campaigns", http.StatusSeeOther)
 }

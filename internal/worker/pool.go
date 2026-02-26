@@ -423,6 +423,10 @@ func (p *Pool) checkCampaignCompletion(campaignID string) {
 	}
 	slog.Info("all campaign jobs done", "campaign", campaignID, "completed", completed, "failed", failed)
 
+	if err := db.SetCampaignReady(p.database, campaignID); err != nil {
+		slog.Error("set campaign ready", "campaign", campaignID, "error", err)
+	}
+
 	campaign, err := db.GetCampaign(p.database, campaignID)
 	if err != nil || campaign == nil {
 		return

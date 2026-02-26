@@ -113,6 +113,8 @@ func New(database *sql.DB, cfg *config.Config, templateFS fs.FS, mailer *email.M
 				class += " badge-green"
 			case "EXPIRED", "CONSUMED", "FAILED":
 				class += " badge-red"
+			case "ARCHIVED":
+				class += " badge-gray"
 			case "PENDING":
 				class += " badge-blue"
 			}

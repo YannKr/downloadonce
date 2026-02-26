@@ -264,7 +264,29 @@ func (h *Handler) APICampaignPublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db.SetCampaignPublishedReady(h.DB, id)
+	asset, err := db.GetAsset(h.DB, campaign.AssetID)
+	if err != nil || asset == nil {
+		renderJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "asset not found")
+		return
+	}
+
+	jobType := "watermark_video"
+	if asset.AssetType == "image" {
+		jobType = "watermark_image"
+	}
+
+	db.SetCampaignPublished(h.DB, id)
+	for _, t := range tokens {
+		job := &model.Job{
+			ID:         uuid.New().String(),
+			JobType:    jobType,
+			CampaignID: id,
+			TokenID:    t.ID,
+		}
+		if err := db.EnqueueJob(h.DB, job); err != nil {
+			slog.Error("api enqueue watermark job", "error", err, "token", t.ID)
+		}
+	}
 	db.InsertAuditLog(h.DB, accountID, "campaign_published", "campaign", id, campaign.Name, r.RemoteAddr)
 
 	if h.Mailer != nil && h.Mailer.Enabled() {
@@ -362,8 +384,11 @@ func (h *Handler) APICampaignAddRecipients(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if campaign.State != "DRAFT" {
-		renderJSONError(w, http.StatusConflict, "CONFLICT", "campaign is not in DRAFT state")
+	switch campaign.State {
+	case "DRAFT", "PROCESSING", "READY":
+		// allowed
+	default:
+		renderJSONError(w, http.StatusConflict, "CONFLICT", "cannot add recipients to a campaign in state "+campaign.State)
 		return
 	}
 
@@ -375,15 +400,21 @@ func (h *Handler) APICampaignAddRecipients(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	asset, err := db.GetAsset(h.DB, campaign.AssetID)
+	if err != nil || asset == nil {
+		renderJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "asset not found")
+		return
+	}
+	jobType := "watermark_video"
+	if asset.AssetType == "image" {
+		jobType = "watermark_image"
+	}
+
 	added := 0
 	skipped := 0
 	for _, rid := range body.RecipientIDs {
 		rec, err := db.GetRecipient(h.DB, rid)
-		if err != nil {
-			skipped++
-			continue
-		}
-		if rec == nil {
+		if err != nil || rec == nil {
 			skipped++
 			continue
 		}
@@ -400,7 +431,22 @@ func (h *Handler) APICampaignAddRecipients(w http.ResponseWriter, r *http.Reques
 			skipped++
 			continue
 		}
+		if campaign.State == "PROCESSING" || campaign.State == "READY" {
+			job := &model.Job{
+				ID:         uuid.New().String(),
+				JobType:    jobType,
+				CampaignID: campaign.ID,
+				TokenID:    token.ID,
+			}
+			if err := db.EnqueueJob(h.DB, job); err != nil {
+				slog.Error("api enqueue watermark job for new token", "error", err, "token", token.ID)
+			}
+		}
 		added++
+	}
+
+	if added > 0 && campaign.State == "READY" {
+		db.UpdateCampaignState(h.DB, campaign.ID, "PROCESSING")
 	}
 
 	renderJSON(w, http.StatusOK, map[string]int{"added": added, "skipped": skipped})
