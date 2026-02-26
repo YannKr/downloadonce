@@ -184,10 +184,25 @@ func (h *Handler) APICampaignCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.AutoPublish {
-		db.SetCampaignPublishedReady(h.DB, campaign.ID)
-		campaign.State = "READY"
+		jobType := "watermark_video"
+		if asset.AssetType == "image" {
+			jobType = "watermark_image"
+		}
+		db.SetCampaignPublished(h.DB, campaign.ID)
+		campaign.State = "PROCESSING"
 		now := time.Now()
 		campaign.PublishedAt = &now
+		for _, t := range tokens {
+			job := &model.Job{
+				ID:         uuid.New().String(),
+				JobType:    jobType,
+				CampaignID: campaign.ID,
+				TokenID:    t.ID,
+			}
+			if err := db.EnqueueJob(h.DB, job); err != nil {
+				slog.Error("api auto-publish enqueue job", "error", err, "token", t.ID)
+			}
+		}
 	}
 
 	db.InsertAuditLog(h.DB, accountID, "campaign_created", "campaign", campaign.ID, campaign.Name, r.RemoteAddr)
