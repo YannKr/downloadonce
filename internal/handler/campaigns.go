@@ -48,7 +48,7 @@ func (h *Handler) CampaignList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal error", 500)
 		return
 	}
-	h.renderAuth(w, r, "campaign_list.html", "Campaigns", map[string]interface{}{
+	h.renderAuth(w, r, "campaign_list.html", "My Campaigns", map[string]interface{}{
 		"Campaigns":    campaigns,
 		"ShowArchived": showArchived,
 	})

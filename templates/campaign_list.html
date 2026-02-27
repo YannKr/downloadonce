@@ -1,10 +1,11 @@
 {{define "content"}}
 <div class="page-header">
-  <h1>{{if .Data.ShowArchived}}Archived Campaigns{{else}}Campaigns{{end}}</h1>
+  <h1>{{if .Data.ShowArchived}}Archived Campaigns{{else}}My Campaigns{{end}}</h1>
   <div>
     {{if .Data.ShowArchived}}
-    <a href="/campaigns" class="btn btn-secondary">Active Campaigns</a>
+    <a href="/campaigns" class="btn btn-secondary">&larr; Active Campaigns</a>
     {{else}}
+    {{if .IsAdmin}}<a href="/admin/campaigns" class="btn btn-secondary">All Campaigns</a>{{end}}
     <a href="/campaigns?archived=1" class="btn btn-secondary">Archived</a>
     <a href="/campaigns/new" class="btn btn-primary">New Campaign</a>
     {{end}}
@@ -37,6 +38,6 @@
   </tbody>
 </table>
 {{else}}
-<p class="text-muted">{{if .Data.ShowArchived}}No archived campaigns.{{else}}No campaigns yet.{{end}}</p>
+<p class="text-muted">{{if .Data.ShowArchived}}No archived campaigns yet.{{else}}You haven't created any campaigns yet. <a href="/campaigns/new">Create your first one</a>.{{end}}</p>
 {{end}}
 {{end}}

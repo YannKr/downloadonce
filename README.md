@@ -121,6 +121,8 @@ nginx needs explicit configuration for three things:
 - **File downloads** — buffering off avoids nginx holding the entire watermarked file in memory before forwarding
 - **Chunked uploads** — `proxy_request_buffering off` streams the request body directly to the app instead of spooling it to disk first
 
+> **Proxy header inheritance caveat:** nginx only inherits `proxy_set_header` directives from a parent context into a `location` block when that block defines *no* `proxy_set_header` of its own. If even one `proxy_set_header` appears in a `location`, all parent-level ones are silently dropped for that block. The SSE and default locations below set `Connection ''` and must therefore repeat every header explicitly.
+
 ```nginx
 upstream downloadonce {
     server 127.0.0.1:8080;
@@ -146,25 +148,31 @@ server {
     # Match app MAX_UPLOAD_BYTES default (50 GB)
     client_max_body_size 50g;
 
-    # Common proxy headers — sets X-Real-IP used by the audit log
     proxy_http_version 1.1;
-    proxy_set_header   Host              $host;
-    proxy_set_header   X-Real-IP         $remote_addr;
-    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-    proxy_set_header   X-Forwarded-Proto $scheme;
 
-    # SSE (real-time progress) — buffering must be off or events never reach the browser
+    # SSE (real-time progress) — buffering must be off or events never reach the browser.
+    # proxy_set_header Connection '' must be repeated here because any proxy_set_header
+    # in a location block stops inheritance of server-level headers.
     location ~ ^/(d/[^/]+|campaigns/[^/]+)/events$ {
         proxy_pass         http://downloadonce;
         proxy_buffering    off;
         proxy_cache        off;
-        proxy_set_header   Connection '';
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Connection        '';
         proxy_read_timeout 1h;
     }
 
-    # File downloads — stream directly; buffering off avoids holding large files in memory
+    # File downloads — stream directly; buffering off avoids holding large files in memory.
+    # No proxy_set_header here so server-level headers are inherited.
     location ~ ^/d/[^/]+/file$ {
         proxy_pass         http://downloadonce;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
         proxy_buffering    off;
         proxy_read_timeout 1h;
     }
@@ -172,6 +180,10 @@ server {
     # Chunked uploads — stream body directly to app, don't spool to nginx temp
     location /upload/chunks/ {
         proxy_pass              http://downloadonce;
+        proxy_set_header        Host              $host;
+        proxy_set_header        X-Real-IP         $remote_addr;
+        proxy_set_header        X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
         proxy_request_buffering off;
         proxy_read_timeout      10m;
         client_body_timeout     10m;
@@ -180,9 +192,58 @@ server {
     # Everything else
     location / {
         proxy_pass         http://downloadonce;
-        proxy_set_header   Connection '';
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Connection        '';
         proxy_read_timeout 60s;
     }
+}
+```
+
+#### Nginx Proxy Manager
+
+NPM sets `X-Real-IP` and `X-Forwarded-For` only inside its own generated `location /` block, not at the `server {}` level. Custom location blocks added via the **Advanced** tab are siblings of that block and receive no IP headers by default. Each custom block must include them explicitly:
+
+```nginx
+# Match app MAX_UPLOAD_BYTES (50 GB)
+client_max_body_size 50g;
+
+# SSE — real-time progress events
+location ~ ^/(d/[^/]+|campaigns/[^/]+)/events$ {
+    proxy_pass http://192.168.x.x:8080;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection        '';
+    proxy_buffering    off;
+    proxy_cache        off;
+    proxy_read_timeout 1h;
+}
+
+# File downloads — stream, no buffering
+location ~ ^/d/[^/]+/file$ {
+    proxy_pass http://192.168.x.x:8080;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering    off;
+    proxy_read_timeout 1h;
+}
+
+# Chunked uploads — don't spool to disk
+location /upload/chunks/ {
+    proxy_pass              http://192.168.x.x:8080;
+    proxy_set_header        Host              $host;
+    proxy_set_header        X-Real-IP         $remote_addr;
+    proxy_set_header        X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header        X-Forwarded-Proto $scheme;
+    proxy_request_buffering off;
+    proxy_read_timeout      10m;
+    client_body_timeout     10m;
 }
 ```
 

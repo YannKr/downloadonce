@@ -1,69 +1,110 @@
 {{define "content"}}
 <h1>Upload Asset</h1>
 
-<div id="upload-area">
-  <div class="form-group">
-    <label for="file-input">Select file (video or image)</label>
-    <input type="file" id="file-input" accept="video/*,image/*">
-  </div>
-  <div id="upload-progress-wrap" style="display:none">
-    <div class="progress-bar">
-      <div class="progress-fill" id="upload-progress-bar" style="width:0%"></div>
-      <span class="progress-text" id="upload-progress-pct">0%</span>
+<div style="display:flex;gap:.5rem;margin-bottom:1.5rem">
+  <button type="button" id="tab-file-btn" class="btn btn-secondary" onclick="switchTab('file')">Upload File</button>
+  <button type="button" id="tab-url-btn" class="btn btn-secondary" onclick="switchTab('url')">From URL</button>
+</div>
+
+<div id="tab-file">
+  <div id="upload-area">
+    <div class="form-group">
+      <label for="file-input">Select file (video or image)</label>
+      <input type="file" id="file-input" accept="video/*,image/*">
     </div>
-    <p id="upload-status" class="text-muted" style="margin-top:0.5rem"></p>
-    <button type="button" id="cancel-upload-btn" class="btn btn-secondary" style="margin-top:0.5rem">Cancel</button>
+    <div id="upload-progress-wrap" style="display:none">
+      <div class="progress-bar">
+        <div class="progress-fill" id="upload-progress-bar" style="width:0%"></div>
+        <span class="progress-text" id="upload-progress-pct">0%</span>
+      </div>
+      <p id="upload-status" class="text-muted" style="margin-top:0.5rem"></p>
+      <button type="button" id="cancel-upload-btn" class="btn btn-secondary" style="margin-top:0.5rem">Cancel</button>
+    </div>
+    <div id="upload-controls">
+      <button type="button" id="start-upload-btn" class="btn btn-primary" disabled>Upload</button>
+      <a href="/assets" class="btn btn-secondary">Cancel</a>
+    </div>
+    <p id="upload-error" class="alert alert-error" style="display:none"></p>
   </div>
-  <div id="upload-controls">
-    <button type="button" id="start-upload-btn" class="btn btn-primary" disabled>Upload</button>
-    <a href="/assets" class="btn btn-secondary">Cancel</a>
-  </div>
-  <p id="upload-error" class="alert alert-error" style="display:none"></p>
+</div>
+
+<div id="tab-url" style="display:none">
+  <form method="POST" action="/assets/fetch" id="url-form">
+    {{.CSRFField}}
+    <div class="form-group">
+      <label for="url-input">File URL</label>
+      <input type="url" id="url-input" name="url" class="form-control"
+             placeholder="https://example.com/video.mp4"
+             value="{{if .Data}}{{.Data.URLValue}}{{end}}" required
+             style="width:100%;max-width:600px">
+      <small class="text-muted">The server will download this file directly. Supported: video and image formats.</small>
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center">
+      <button type="submit" class="btn btn-primary" id="url-submit-btn">Import</button>
+      <a href="/assets" class="btn btn-secondary">Cancel</a>
+      <span id="url-importing" style="display:none" class="text-muted">Importing&hellip;</span>
+    </div>
+  </form>
 </div>
 
 <script>
 (function() {
-  var fileInput    = document.getElementById("file-input");
-  var startBtn     = document.getElementById("start-upload-btn");
-  var cancelBtn    = document.getElementById("cancel-upload-btn");
-  var progressWrap = document.getElementById("upload-progress-wrap");
-  var progressBar  = document.getElementById("upload-progress-bar");
-  var progressPct  = document.getElementById("upload-progress-pct");
-  var statusEl     = document.getElementById("upload-status");
-  var errorEl      = document.getElementById("upload-error");
-  var controls     = document.getElementById("upload-controls");
+  // Tab switching
+  function switchTab(tab) {
+    document.getElementById('tab-file').style.display = tab === 'file' ? '' : 'none';
+    document.getElementById('tab-url').style.display  = tab === 'url'  ? '' : 'none';
+    document.getElementById('tab-file-btn').classList.toggle('btn-primary',   tab === 'file');
+    document.getElementById('tab-file-btn').classList.toggle('btn-secondary', tab !== 'file');
+    document.getElementById('tab-url-btn').classList.toggle('btn-primary',    tab === 'url');
+    document.getElementById('tab-url-btn').classList.toggle('btn-secondary',  tab !== 'url');
+  }
+  window.switchTab = switchTab;
 
-  fileInput.addEventListener("change", function() {
+  // Default to URL tab if a URL value was pre-populated (error round-trip)
+  {{if and .Data .Data.URLValue}}switchTab('url');{{else}}switchTab('file');{{end}}
+
+  // File upload wiring
+  var fileInput    = document.getElementById('file-input');
+  var startBtn     = document.getElementById('start-upload-btn');
+  var cancelBtn    = document.getElementById('cancel-upload-btn');
+  var progressWrap = document.getElementById('upload-progress-wrap');
+  var progressBar  = document.getElementById('upload-progress-bar');
+  var progressPct  = document.getElementById('upload-progress-pct');
+  var statusEl     = document.getElementById('upload-status');
+  var errorEl      = document.getElementById('upload-error');
+  var controls     = document.getElementById('upload-controls');
+
+  fileInput.addEventListener('change', function() {
     startBtn.disabled = !fileInput.files.length;
   });
 
-  startBtn.addEventListener("click", function() {
+  startBtn.addEventListener('click', function() {
     if (!fileInput.files.length) return;
     var file = fileInput.files[0];
-    controls.style.display = "none";
-    progressWrap.style.display = "";
-    errorEl.style.display = "none";
+    controls.style.display = 'none';
+    progressWrap.style.display = '';
+    errorEl.style.display = 'none';
     if (window.ChunkedUpload) {
       window.ChunkedUpload.start(file, {
         onProgress: function(pct, msg) {
-          progressBar.style.width = pct + "%";
-          progressPct.textContent = pct + "%";
-          statusEl.textContent = msg || "";
+          progressBar.style.width = pct + '%';
+          progressPct.textContent = pct + '%';
+          statusEl.textContent = msg || '';
         },
         onComplete: function(assetId) {
-          statusEl.textContent = "Upload complete. Redirecting...";
-          setTimeout(function() { window.location.href = "/assets"; }, 800);
+          statusEl.textContent = 'Upload complete. Redirecting…';
+          setTimeout(function() { window.location.href = '/assets'; }, 800);
         },
         onError: function(msg) {
           errorEl.textContent = msg;
-          errorEl.style.display = "";
-          progressWrap.style.display = "none";
-          controls.style.display = "";
+          errorEl.style.display = '';
+          progressWrap.style.display = 'none';
+          controls.style.display = '';
           startBtn.disabled = false;
         },
         onCancel: function() {
-          progressWrap.style.display = "none";
-          controls.style.display = "";
+          progressWrap.style.display = 'none';
+          controls.style.display = '';
           startBtn.disabled = !fileInput.files.length;
         },
         getCancelHandle: function(handle) {
@@ -73,8 +114,14 @@
     }
   });
 
-  cancelBtn.addEventListener("click", function() {
+  cancelBtn.addEventListener('click', function() {
     if (cancelBtn._cancelHandle) cancelBtn._cancelHandle();
+  });
+
+  // URL form: show "Importing…" while the server-side fetch is in progress
+  document.getElementById('url-form').addEventListener('submit', function() {
+    document.getElementById('url-submit-btn').disabled = true;
+    document.getElementById('url-importing').style.display = '';
   });
 })();
 </script>

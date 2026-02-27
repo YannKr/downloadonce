@@ -3,6 +3,7 @@
   <h1>Assets</h1>
   <a href="/assets/upload" class="btn btn-primary">Upload Asset</a>
 </div>
+<div class="alert alert-warning">Assets are shared across the whole instance — all users can see and use every asset in campaigns.</div>
 
 {{if .Data}}
 <table>
@@ -22,17 +23,28 @@
     {{range .Data}}
     <tr>
       <td><img src="/assets/{{.ID}}/thumb" class="thumb" alt=""></td>
-      <td>{{.OriginalName}}</td>
+      <td class="asset-name-cell" data-id="{{.ID}}">
+        <span class="asset-name" title="Click to rename">{{.OriginalName}}</span>
+        <form class="asset-rename-form" method="POST" action="/assets/{{.ID}}/rename" style="display:none">
+          {{$.CSRFField}}
+          <input type="text" name="name" class="asset-rename-input" value="{{.OriginalName}}" required>
+          <button type="submit" class="btn btn-sm btn-primary">Save</button>
+          <button type="button" class="btn btn-sm btn-secondary asset-rename-cancel">Cancel</button>
+        </form>
+      </td>
       <td>{{.AssetType}}</td>
       <td>{{formatBytes .FileSize}}</td>
       <td>{{if .Width}}{{derefInt64 .Width}}x{{derefInt64 .Height}}{{end}}</td>
       <td>{{formatDuration .Duration}}</td>
       <td>{{formatTime .CreatedAt}}</td>
       <td>
-        <form method="POST" action="/assets/{{.ID}}/delete" onsubmit="return confirm('Delete this asset?')">
-          {{$.CSRFField}}
-          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-        </form>
+        <div style="display:flex;gap:.4rem">
+          <a href="/assets/{{.ID}}/download" class="btn btn-sm btn-secondary">Download</a>
+          <form method="POST" action="/assets/{{.ID}}/delete" onsubmit="return confirm('Delete this asset?')">
+            {{$.CSRFField}}
+            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+          </form>
+        </div>
       </td>
     </tr>
     {{end}}
@@ -41,4 +53,43 @@
 {{else}}
 <p class="text-muted">No assets uploaded yet.</p>
 {{end}}
+
+<style>
+.asset-name {
+  cursor: pointer;
+  border-bottom: 1px dashed #aaa;
+}
+.asset-name:hover {
+  border-bottom-color: currentColor;
+}
+.asset-rename-input {
+  width: 16rem;
+  margin-right: .25rem;
+}
+</style>
+<script>
+document.querySelectorAll('.asset-name-cell').forEach(function(cell) {
+  var nameSpan  = cell.querySelector('.asset-name');
+  var form      = cell.querySelector('.asset-rename-form');
+  var input     = cell.querySelector('.asset-rename-input');
+  var cancelBtn = cell.querySelector('.asset-rename-cancel');
+
+  nameSpan.addEventListener('click', function() {
+    nameSpan.style.display = 'none';
+    form.style.display = '';
+    input.focus();
+    input.select();
+  });
+
+  cancelBtn.addEventListener('click', function() {
+    form.style.display = 'none';
+    nameSpan.style.display = '';
+    input.value = nameSpan.textContent.trim();
+  });
+
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') cancelBtn.click();
+  });
+});
+</script>
 {{end}}

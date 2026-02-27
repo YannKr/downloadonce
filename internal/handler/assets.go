@@ -1,17 +1,21 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -20,6 +24,10 @@ import (
 	"github.com/YannKr/downloadonce/internal/model"
 	"github.com/YannKr/downloadonce/internal/watermark"
 )
+
+type assetUploadData struct {
+	URLValue string // repopulate URL field on error
+}
 
 func (h *Handler) AssetList(w http.ResponseWriter, r *http.Request) {
 	assets, err := db.ListAssets(h.DB)
@@ -32,7 +40,7 @@ func (h *Handler) AssetList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AssetUploadForm(w http.ResponseWriter, r *http.Request) {
-	h.renderAuth(w, r, "asset_upload.html", "Upload Assets", nil)
+	h.renderAuth(w, r, "asset_upload.html", "Upload Asset", assetUploadData{})
 }
 
 func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
@@ -76,25 +84,102 @@ func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/assets", http.StatusSeeOther)
 }
 
+func (h *Handler) AssetFetchURL(w http.ResponseWriter, r *http.Request) {
+	accountID := auth.AccountFromContext(r.Context())
+
+	if err := r.ParseForm(); err != nil {
+		h.renderAuth(w, r, "asset_upload.html", "Upload Asset", assetUploadData{})
+		return
+	}
+
+	rawURL := strings.TrimSpace(r.FormValue("url"))
+	if rawURL == "" {
+		h.renderAuth(w, r, "asset_upload.html", "Upload Asset", assetUploadData{URLValue: rawURL})
+		return
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		h.render(w, r, "asset_upload.html", PageData{
+			Title: "Upload Asset", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
+			Error: "Invalid URL — must start with http:// or https://",
+			Data:  assetUploadData{URLValue: rawURL},
+		})
+		return
+	}
+
+	client := &http.Client{Timeout: 30 * time.Minute}
+	resp, err := client.Get(rawURL)
+	if err != nil {
+		h.render(w, r, "asset_upload.html", PageData{
+			Title: "Upload Asset", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
+			Error: fmt.Sprintf("Failed to fetch URL: %v", err),
+			Data:  assetUploadData{URLValue: rawURL},
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		h.render(w, r, "asset_upload.html", PageData{
+			Title: "Upload Asset", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
+			Error: fmt.Sprintf("Remote server returned %d", resp.StatusCode),
+			Data:  assetUploadData{URLValue: rawURL},
+		})
+		return
+	}
+
+	// Derive filename: prefer Content-Disposition, fall back to URL path
+	originalName := filepath.Base(parsed.Path)
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		if _, params, err := mime.ParseMediaType(cd); err == nil {
+			if fn := params["filename"]; fn != "" {
+				originalName = fn
+			}
+		}
+	}
+	if originalName == "" || originalName == "." || originalName == "/" {
+		originalName = "download"
+	}
+
+	body := io.LimitReader(resp.Body, h.Cfg.MaxUploadBytes)
+	if err := h.processAssetFromReader(accountID, body, originalName); err != nil {
+		h.render(w, r, "asset_upload.html", PageData{
+			Title: "Upload Asset", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
+			Error: fmt.Sprintf("Import failed: %v", err),
+			Data:  assetUploadData{URLValue: rawURL},
+		})
+		return
+	}
+
+	setFlash(w, "Asset imported from URL.")
+	http.Redirect(w, r, "/assets", http.StatusSeeOther)
+}
+
 func (h *Handler) processOneUpload(accountID string, header *multipart.FileHeader) error {
 	file, err := header.Open()
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+	return h.processAssetFromReader(accountID, file, header.Filename)
+}
 
-	originalName := header.Filename
-
-	// Detect MIME type from first 512 bytes
-	buf := make([]byte, 512)
-	n, _ := file.Read(buf)
-	mimeType := http.DetectContentType(buf[:n])
-	file.Seek(0, io.SeekStart)
+func (h *Handler) processAssetFromReader(accountID string, r io.Reader, originalName string) error {
+	// Detect MIME type from first 512 bytes, then prepend them back via MultiReader
+	var sniff [512]byte
+	n, _ := io.ReadFull(r, sniff[:])
+	mimeType := http.DetectContentType(sniff[:n])
+	r = io.MultiReader(bytes.NewReader(sniff[:n]), r)
 
 	// Check allowed types
+	origExt := strings.ToLower(filepath.Ext(originalName))
 	ext, ok := watermark.MimeToExt[mimeType]
 	if !ok {
-		origExt := strings.ToLower(filepath.Ext(header.Filename))
 		found := false
 		for _, e := range watermark.MimeToExt {
 			if e == origExt {
@@ -131,7 +216,7 @@ func (h *Handler) processOneUpload(accountID string, header *multipart.FileHeade
 	}
 
 	hasher := sha256.New()
-	written, err := io.Copy(dst, io.TeeReader(file, hasher))
+	written, err := io.Copy(dst, io.TeeReader(r, hasher))
 	dst.Close()
 	if err != nil {
 		os.RemoveAll(assetDir)
@@ -209,6 +294,47 @@ func (h *Handler) AssetThumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeFile(w, r, thumbPath)
+}
+
+func (h *Handler) AssetDownload(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	accountID := auth.AccountFromContext(r.Context())
+
+	asset, err := db.GetAsset(h.DB, id)
+	if err != nil || asset == nil || (asset.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
+	fullPath := filepath.Join(h.Cfg.DataDir, asset.OriginalPath)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, asset.OriginalName))
+	http.ServeFile(w, r, fullPath)
+}
+
+func (h *Handler) AssetRename(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	accountID := auth.AccountFromContext(r.Context())
+
+	asset, err := db.GetAsset(h.DB, id)
+	if err != nil || asset == nil || (asset.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
+	newName := strings.TrimSpace(r.FormValue("name"))
+	if newName == "" {
+		setFlash(w, "Name cannot be empty.")
+		http.Redirect(w, r, "/assets", http.StatusSeeOther)
+		return
+	}
+
+	if err := db.RenameAsset(h.DB, id, newName); err != nil {
+		slog.Error("rename asset", "error", err)
+		http.Error(w, "Internal error", 500)
+		return
+	}
+
+	http.Redirect(w, r, "/assets", http.StatusSeeOther)
 }
 
 func (h *Handler) AssetDelete(w http.ResponseWriter, r *http.Request) {

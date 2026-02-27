@@ -61,6 +61,11 @@ func GetAsset(database *sql.DB, id string) (*model.Asset, error) {
 	return a, err
 }
 
+func RenameAsset(database *sql.DB, id, title string) error {
+	_, err := database.Exec(`UPDATE assets SET title = ? WHERE id = ?`, title, id)
+	return err
+}
+
 func DeleteAsset(database *sql.DB, id string) error {
 	_, err := database.Exec(`DELETE FROM assets WHERE id = ?`, id)
 	return err

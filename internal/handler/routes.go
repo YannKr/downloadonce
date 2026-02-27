@@ -107,7 +107,10 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 		r.Get("/assets", h.AssetList)
 		r.Get("/assets/upload", h.AssetUploadForm)
 		r.Post("/assets/upload", h.AssetUploadSubmit)
+		r.Post("/assets/fetch", h.AssetFetchURL)
 		r.Get("/assets/{id}/thumb", h.AssetThumbnail)
+		r.Get("/assets/{id}/download", h.AssetDownload)
+		r.Post("/assets/{id}/rename", h.AssetRename)
 		r.Post("/assets/{id}/delete", h.AssetDelete)
 
 		r.Get("/recipients", h.RecipientList)
