@@ -104,11 +104,85 @@ ssh root@your-server 'BASE_URL=https://dl.example.com ./setup.sh'
 
 The app speaks plain HTTP on `LISTEN_ADDR`. Put it behind Caddy, nginx, or any TLS-terminating proxy.
 
-Minimal **Caddyfile**:
+#### Caddy
+
+Caddy handles streaming, SSE, and large uploads correctly with zero extra configuration:
 
 ```caddyfile
 dl.example.com {
     reverse_proxy app:8080
+}
+```
+
+#### nginx
+
+nginx needs explicit configuration for three things:
+- **SSE** (`/events` endpoints) — buffering must be off or events are held until the buffer fills
+- **File downloads** — buffering off avoids nginx holding the entire watermarked file in memory before forwarding
+- **Chunked uploads** — `proxy_request_buffering off` streams the request body directly to the app instead of spooling it to disk first
+
+```nginx
+upstream downloadonce {
+    server 127.0.0.1:8080;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    server_name dl.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name dl.example.com;
+
+    ssl_certificate     /etc/ssl/certs/dl.example.com.pem;
+    ssl_certificate_key /etc/ssl/private/dl.example.com.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # Match app MAX_UPLOAD_BYTES default (50 GB)
+    client_max_body_size 50g;
+
+    # Common proxy headers — sets X-Real-IP used by the audit log
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+
+    # SSE (real-time progress) — buffering must be off or events never reach the browser
+    location ~ ^/(d/[^/]+|campaigns/[^/]+)/events$ {
+        proxy_pass         http://downloadonce;
+        proxy_buffering    off;
+        proxy_cache        off;
+        proxy_set_header   Connection '';
+        proxy_read_timeout 1h;
+    }
+
+    # File downloads — stream directly; buffering off avoids holding large files in memory
+    location ~ ^/d/[^/]+/file$ {
+        proxy_pass         http://downloadonce;
+        proxy_buffering    off;
+        proxy_read_timeout 1h;
+    }
+
+    # Chunked uploads — stream body directly to app, don't spool to nginx temp
+    location /upload/chunks/ {
+        proxy_pass              http://downloadonce;
+        proxy_request_buffering off;
+        proxy_read_timeout      10m;
+        client_body_timeout     10m;
+    }
+
+    # Everything else
+    location / {
+        proxy_pass         http://downloadonce;
+        proxy_set_header   Connection '';
+        proxy_read_timeout 60s;
+    }
 }
 ```
 
