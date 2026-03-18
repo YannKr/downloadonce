@@ -227,12 +227,12 @@ func (h *Handler) CampaignDetail(w http.ResponseWriter, r *http.Request) {
 		tokens[i].DownloadEvents = events
 	}
 
-	// Load jobs for progress display for tokens being watermarked on-demand
+	// Load jobs for progress display (PENDING/RUNNING) and error display (FAILED)
 	jobMap := make(map[string]model.Job)
 	{
 		jobs, _ := db.ListJobsByCampaign(h.DB, id)
 		for _, j := range jobs {
-			if j.State == "PENDING" || j.State == "RUNNING" {
+			if j.State == "PENDING" || j.State == "RUNNING" || j.State == "FAILED" {
 				jobMap[j.TokenID] = j
 			}
 		}
@@ -429,7 +429,7 @@ func (h *Handler) CampaignExportLinks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch campaign.State {
-	case "PROCESSING", "READY", "EXPIRED":
+	case "PROCESSING", "READY", "EXPIRED", "PARTIAL", "FAILED":
 		// allowed
 	default:
 		http.Error(w, "Export is only available after a campaign has been published.", http.StatusBadRequest)
@@ -483,7 +483,7 @@ func (h *Handler) CampaignAddRecipients(w http.ResponseWriter, r *http.Request) 
 	}
 
 	switch campaign.State {
-	case "DRAFT", "PROCESSING", "READY":
+	case "DRAFT", "PROCESSING", "READY", "PARTIAL", "FAILED":
 		// allowed
 	default:
 		http.Error(w, "Cannot add recipients to a campaign in state "+campaign.State, http.StatusBadRequest)
@@ -524,7 +524,7 @@ func (h *Handler) CampaignAddRecipients(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 		// For published campaigns, immediately enqueue a watermark job
-		if campaign.State == "PROCESSING" || campaign.State == "READY" {
+		if campaign.State != "DRAFT" {
 			job := &model.Job{
 				ID:         uuid.New().String(),
 				JobType:    jobType,
@@ -539,13 +539,53 @@ func (h *Handler) CampaignAddRecipients(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Put campaign back to PROCESSING so the worker picks up the new jobs
-	if added > 0 && campaign.State == "READY" {
+	if added > 0 && (campaign.State == "READY" || campaign.State == "PARTIAL" || campaign.State == "FAILED") {
 		db.UpdateCampaignState(h.DB, id, "PROCESSING")
 	}
 
 	db.InsertAuditLog(h.DB, accountID, "recipients_added", "campaign", id, campaign.Name, r.RemoteAddr)
 	setFlash(w, fmt.Sprintf("%d recipient(s) added.", added))
 	http.Redirect(w, r, "/campaigns/"+id, http.StatusSeeOther)
+}
+
+func (h *Handler) TokenRetry(w http.ResponseWriter, r *http.Request) {
+	campaignID := chi.URLParam(r, "id")
+	tokenID := chi.URLParam(r, "tokenID")
+	accountID := auth.AccountFromContext(r.Context())
+
+	campaign, err := db.GetCampaign(h.DB, campaignID)
+	if err != nil || campaign == nil || (campaign.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
+	job, err := db.GetJobByToken(h.DB, tokenID)
+	if err != nil || job == nil {
+		setFlash(w, "Job not found.")
+		http.Redirect(w, r, "/campaigns/"+campaignID, http.StatusSeeOther)
+		return
+	}
+	if job.State != "FAILED" {
+		setFlash(w, "Token is not in a failed state.")
+		http.Redirect(w, r, "/campaigns/"+campaignID, http.StatusSeeOther)
+		return
+	}
+
+	if err := db.ResetJobForManualRetry(h.DB, job.ID); err != nil {
+		slog.Error("manual retry", "error", err)
+		setFlash(w, "Retry failed.")
+		http.Redirect(w, r, "/campaigns/"+campaignID, http.StatusSeeOther)
+		return
+	}
+
+	// If campaign is in FAILED or PARTIAL state, move back to PROCESSING
+	if campaign.State == "FAILED" || campaign.State == "PARTIAL" {
+		db.UpdateCampaignState(h.DB, campaignID, "PROCESSING")
+	}
+
+	db.InsertAuditLog(h.DB, accountID, "token_retry", "token", tokenID, "", r.RemoteAddr)
+	setFlash(w, "Retry queued.")
+	http.Redirect(w, r, "/campaigns/"+campaignID, http.StatusSeeOther)
 }
 
 func (h *Handler) CampaignArchive(w http.ResponseWriter, r *http.Request) {

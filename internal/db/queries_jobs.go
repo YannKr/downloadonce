@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/YannKr/downloadonce/internal/model"
 )
@@ -44,18 +45,19 @@ func ClaimNextJob(database *sql.DB, jobTypes []string) (*model.Job, error) {
 		query += "?"
 		args[i] = jt
 	}
-	query += `) ORDER BY created_at ASC LIMIT 1
+	query += `) AND (next_retry_at IS NULL OR next_retry_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+			ORDER BY created_at ASC LIMIT 1
 		)
 		RETURNING id, job_type, campaign_id, token_id, state, progress,
 		          COALESCE(input_path, ''), COALESCE(result_data, ''),
-		          created_at, started_at`
+		          retry_count, created_at, started_at`
 
 	j := &model.Job{}
 	var createdAt, startedAt SQLiteTime
 	err := database.QueryRow(query, args...).Scan(
 		&j.ID, &j.JobType, &j.CampaignID, &j.TokenID,
 		&j.State, &j.Progress, &j.InputPath, &j.ResultData,
-		&createdAt, &startedAt,
+		&j.RetryCount, &createdAt, &startedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -78,8 +80,52 @@ func CompleteJob(database *sql.DB, id string) error {
 
 func FailJob(database *sql.DB, id, errorMsg string) error {
 	_, err := database.Exec(
-		`UPDATE jobs SET state = 'FAILED', error_message = ?, completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		`UPDATE jobs SET state = 'FAILED', error_message = ?, completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+		 next_retry_at = NULL
 		 WHERE id = ?`, errorMsg, id,
+	)
+	return err
+}
+
+// RetryOrFailJob checks if a job has retries remaining. If so, it resets the
+// job to PENDING with a backoff delay. Otherwise it marks it FAILED.
+// Returns true if the job was retried (re-queued), false if it was failed.
+func RetryOrFailJob(database *sql.DB, id, errorMsg string, delay time.Duration) (retried bool, err error) {
+	var retryCount, maxRetries int
+	err = database.QueryRow(`SELECT retry_count, max_retries FROM jobs WHERE id = ?`, id).Scan(&retryCount, &maxRetries)
+	if err != nil {
+		return false, err
+	}
+
+	if retryCount+1 > maxRetries {
+		// Exhausted retries — mark as permanently failed
+		_, err = database.Exec(
+			`UPDATE jobs SET state = 'FAILED', error_message = ?,
+			 completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), next_retry_at = NULL
+			 WHERE id = ?`, errorMsg, id,
+		)
+		return false, err
+	}
+
+	// Re-queue with backoff
+	nextRetry := time.Now().UTC().Add(delay).Format("2006-01-02T15:04:05.000Z")
+	_, err = database.Exec(
+		`UPDATE jobs SET state = 'PENDING', retry_count = retry_count + 1,
+		 next_retry_at = ?, progress = 0, error_message = ?,
+		 started_at = NULL, completed_at = NULL
+		 WHERE id = ?`, nextRetry, errorMsg, id,
+	)
+	return err == nil, err
+}
+
+// ResetJobForManualRetry resets a FAILED job back to PENDING with retry_count
+// zeroed, so it will be picked up by workers again.
+func ResetJobForManualRetry(database *sql.DB, id string) error {
+	_, err := database.Exec(
+		`UPDATE jobs SET state = 'PENDING', retry_count = 0, max_retries = 3,
+		 next_retry_at = NULL, progress = 0, error_message = NULL,
+		 started_at = NULL, completed_at = NULL
+		 WHERE id = ? AND state = 'FAILED'`, id,
 	)
 	return err
 }
@@ -101,12 +147,13 @@ func GetJob(database *sql.DB, id string) (*model.Job, error) {
 	err := database.QueryRow(`
 		SELECT id, job_type, campaign_id, token_id, state, progress,
 		       COALESCE(error_message, ''), COALESCE(input_path, ''), COALESCE(result_data, ''),
-		       created_at, started_at, completed_at
+		       retry_count, max_retries, created_at, started_at, completed_at
 		FROM jobs WHERE id = ?`, id,
 	).Scan(
 		&j.ID, &j.JobType, &j.CampaignID, &j.TokenID,
 		&j.State, &j.Progress, &j.ErrorMessage,
 		&j.InputPath, &j.ResultData,
+		&j.RetryCount, &j.MaxRetries,
 		&createdAt, &startedAt, &completedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -140,10 +187,24 @@ func CountJobsByCampaign(database *sql.DB, campaignID string) (total, completed,
 	return
 }
 
+// CountJobsByCampaignDetailed returns counts for each job state within a campaign.
+func CountJobsByCampaignDetailed(database *sql.DB, campaignID string) (total, completed, failed, pending, running int, err error) {
+	err = database.QueryRow(`
+		SELECT
+		  COUNT(*),
+		  SUM(CASE WHEN state = 'COMPLETED' THEN 1 ELSE 0 END),
+		  SUM(CASE WHEN state = 'FAILED' THEN 1 ELSE 0 END),
+		  SUM(CASE WHEN state = 'PENDING' THEN 1 ELSE 0 END),
+		  SUM(CASE WHEN state = 'RUNNING' THEN 1 ELSE 0 END)
+		FROM jobs WHERE campaign_id = ?`, campaignID,
+	).Scan(&total, &completed, &failed, &pending, &running)
+	return
+}
+
 func ListJobsByCampaign(database *sql.DB, campaignID string) ([]model.Job, error) {
 	rows, err := database.Query(`
 		SELECT id, job_type, campaign_id, token_id, state, progress,
-		       COALESCE(error_message, ''), created_at
+		       COALESCE(error_message, ''), retry_count, max_retries, created_at
 		FROM jobs WHERE campaign_id = ?
 		ORDER BY created_at ASC`, campaignID)
 	if err != nil {
@@ -156,7 +217,8 @@ func ListJobsByCampaign(database *sql.DB, campaignID string) ([]model.Job, error
 		var j model.Job
 		var createdAt SQLiteTime
 		if err := rows.Scan(&j.ID, &j.JobType, &j.CampaignID, &j.TokenID,
-			&j.State, &j.Progress, &j.ErrorMessage, &createdAt); err != nil {
+			&j.State, &j.Progress, &j.ErrorMessage,
+			&j.RetryCount, &j.MaxRetries, &createdAt); err != nil {
 			return nil, err
 		}
 		j.CreatedAt = createdAt.Time
@@ -190,11 +252,12 @@ func GetJobByToken(database *sql.DB, tokenID string) (*model.Job, error) {
 	var createdAt SQLiteTime
 	err := database.QueryRow(`
 		SELECT id, job_type, campaign_id, token_id, state, progress,
-		       COALESCE(error_message, ''), created_at
+		       COALESCE(error_message, ''), retry_count, max_retries, created_at
 		FROM jobs WHERE token_id = ?
 		ORDER BY created_at DESC LIMIT 1`, tokenID,
 	).Scan(&j.ID, &j.JobType, &j.CampaignID, &j.TokenID,
-		&j.State, &j.Progress, &j.ErrorMessage, &createdAt)
+		&j.State, &j.Progress, &j.ErrorMessage,
+		&j.RetryCount, &j.MaxRetries, &createdAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -203,6 +266,22 @@ func GetJobByToken(database *sql.DB, tokenID string) (*model.Job, error) {
 	}
 	j.CreatedAt = createdAt.Time
 	return j, nil
+}
+
+// ResetStuckJobs resets jobs that have been in RUNNING state longer than the
+// given threshold back to PENDING. Does NOT increment retry_count since this
+// is not a normal failure (e.g., server crash).
+func ResetStuckJobs(database *sql.DB, stuckThreshold time.Duration) (int, error) {
+	cutoff := time.Now().UTC().Add(-stuckThreshold).Format("2006-01-02T15:04:05.000Z")
+	res, err := database.Exec(
+		`UPDATE jobs SET state = 'PENDING', started_at = NULL, progress = 0, next_retry_at = NULL
+		 WHERE state = 'RUNNING' AND started_at < ?`, cutoff,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 func InsertWatermarkIndex(database *sql.DB, payloadHex, tokenID, campaignID, recipientID, wmAlgorithm string) error {

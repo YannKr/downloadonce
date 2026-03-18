@@ -400,7 +400,7 @@ func (h *Handler) APICampaignAddRecipients(w http.ResponseWriter, r *http.Reques
 	}
 
 	switch campaign.State {
-	case "DRAFT", "PROCESSING", "READY":
+	case "DRAFT", "PROCESSING", "READY", "PARTIAL", "FAILED":
 		// allowed
 	default:
 		renderJSONError(w, http.StatusConflict, "CONFLICT", "cannot add recipients to a campaign in state "+campaign.State)
@@ -446,7 +446,7 @@ func (h *Handler) APICampaignAddRecipients(w http.ResponseWriter, r *http.Reques
 			skipped++
 			continue
 		}
-		if campaign.State == "PROCESSING" || campaign.State == "READY" {
+		if campaign.State != "DRAFT" {
 			job := &model.Job{
 				ID:         uuid.New().String(),
 				JobType:    jobType,
@@ -460,7 +460,7 @@ func (h *Handler) APICampaignAddRecipients(w http.ResponseWriter, r *http.Reques
 		added++
 	}
 
-	if added > 0 && campaign.State == "READY" {
+	if added > 0 && (campaign.State == "READY" || campaign.State == "PARTIAL" || campaign.State == "FAILED") {
 		db.UpdateCampaignState(h.DB, campaign.ID, "PROCESSING")
 	}
 

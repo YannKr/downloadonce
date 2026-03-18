@@ -25,6 +25,12 @@
   </div>
 </div>
 
+{{if or (eq .Data.Campaign.State "PARTIAL") (eq .Data.Campaign.State "FAILED")}}
+<div class="alert alert-warning">
+  {{.Data.Campaign.JobsFailed}} watermarking job(s) failed permanently. Use the retry buttons below to re-attempt individual tokens.
+</div>
+{{end}}
+
 <div class="detail-grid">
   <div class="detail-item">
     <span class="detail-label">Asset</span>
@@ -56,7 +62,7 @@
   {{end}}
 </div>
 
-{{if or (eq .Data.Campaign.State "READY") (eq .Data.Campaign.State "PROCESSING") (eq .Data.Campaign.State "EXPIRED")}}
+{{if or (eq .Data.Campaign.State "READY") (eq .Data.Campaign.State "PROCESSING") (eq .Data.Campaign.State "EXPIRED") (eq .Data.Campaign.State "PARTIAL") (eq .Data.Campaign.State "FAILED")}}
 <div class="export-bar" style="margin-bottom:1rem;">
   <span style="margin-right:0.5rem;">Export links:</span>
   <button class="btn btn-sm btn-secondary" onclick="copyLinksToClipboard()">Copy to clipboard</button>
@@ -96,7 +102,7 @@ async function copyLinksToClipboard() {
   <tbody>
     {{range .Data.Tokens}}
     {{$tokenID := .ID}}
-    <tr id="token-{{.ID}}">
+    <tr id="token-{{.ID}}" data-token-id="{{.ID}}">
       <td>{{.RecipientName}}</td>
       <td>{{.RecipientEmail}}</td>
       <td id="state-{{.ID}}">{{stateBadge .State}}</td>
@@ -105,10 +111,17 @@ async function copyLinksToClipboard() {
         <span class="text-muted">Done</span>
         {{else}}
         {{with index $.Data.Jobs $tokenID}}
-        <div class="progress-bar" id="progress-{{$tokenID}}">
-          <div class="progress-fill" style="width: {{.Progress}}%"></div>
-          <span class="progress-text">{{.Progress}}%</span>
-        </div>
+          {{if eq .State "FAILED"}}
+          <details>
+            <summary>Error {{if gt .RetryCount 0}}({{.RetryCount}}/{{.MaxRetries}} retries){{end}}</summary>
+            <pre style="white-space:pre-wrap;font-size:0.8em;max-width:400px;">{{.ErrorMessage}}</pre>
+          </details>
+          {{else}}
+          <div class="progress-bar" id="progress-{{$tokenID}}">
+            <div class="progress-fill" style="width: {{.Progress}}%"></div>
+            <span class="progress-text">{{.Progress}}%</span>
+          </div>
+          {{end}}
         {{else}}
         <span class="text-muted">--</span>
         {{end}}
@@ -138,6 +151,15 @@ async function copyLinksToClipboard() {
           {{$.CSRFField}}
           <button type="submit" class="btn btn-sm btn-danger">Revoke</button>
         </form>
+        {{end}}
+        {{with index $.Data.Jobs $tokenID}}
+        {{if eq .State "FAILED"}}
+        <form method="POST" action="/campaigns/{{$.Data.Campaign.ID}}/tokens/{{$tokenID}}/retry"
+              class="retry-form">
+          {{$.CSRFField}}
+          <button type="submit" class="btn btn-sm btn-warning">Retry</button>
+        </form>
+        {{end}}
         {{end}}
       </td>
     </tr>

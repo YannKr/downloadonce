@@ -111,6 +111,77 @@ IP Address: %s
 	return m.sendMultipart(to, subject, textBody, htmlBody)
 }
 
+func (m *Mailer) SendJobFailed(to, ownerName, campaignName, recipientName, errorMsg string) error {
+	subject := fmt.Sprintf("Watermarking failed: %s - %s", campaignName, recipientName)
+
+	textBody := fmt.Sprintf(`Hello %s,
+
+A watermarking job for your campaign "%s" has failed permanently after exhausting all retries.
+
+Recipient: %s
+Error: %s
+
+You can manually retry this job from the campaign detail page.
+`, ownerName, campaignName, recipientName, errorMsg)
+
+	htmlBody := fmt.Sprintf(`<html><body>
+<p>Hello %s,</p>
+<p>A watermarking job for your campaign "<strong>%s</strong>" has failed permanently after exhausting all retries.</p>
+<table style="border-collapse:collapse;margin:12px 0">
+<tr><td style="padding:4px 12px 4px 0;color:#666">Recipient</td><td>%s</td></tr>
+<tr><td style="padding:4px 12px 4px 0;color:#666">Error</td><td><code>%s</code></td></tr>
+</table>
+<p>You can manually retry this job from the campaign detail page.</p>
+</body></html>`, ownerName, campaignName, recipientName, errorMsg)
+
+	return m.sendMultipart(to, subject, textBody, htmlBody)
+}
+
+func (m *Mailer) SendCampaignPartial(to, ownerName, campaignName string, completed, failed int) error {
+	subject := fmt.Sprintf("Campaign partially ready: %s", campaignName)
+
+	textBody := fmt.Sprintf(`Hello %s,
+
+Your campaign "%s" has completed processing with partial results.
+
+Successful: %d
+Failed: %d
+
+Some watermarking jobs failed permanently. You can retry failed jobs from the campaign detail page.
+`, ownerName, campaignName, completed, failed)
+
+	htmlBody := fmt.Sprintf(`<html><body>
+<p>Hello %s,</p>
+<p>Your campaign "<strong>%s</strong>" has completed processing with partial results.</p>
+<table style="border-collapse:collapse;margin:12px 0">
+<tr><td style="padding:4px 12px 4px 0;color:#666">Successful</td><td><strong>%d</strong></td></tr>
+<tr><td style="padding:4px 12px 4px 0;color:#666">Failed</td><td><strong>%d</strong></td></tr>
+</table>
+<p>Some watermarking jobs failed permanently. You can retry failed jobs from the campaign detail page.</p>
+</body></html>`, ownerName, campaignName, completed, failed)
+
+	return m.sendMultipart(to, subject, textBody, htmlBody)
+}
+
+func (m *Mailer) SendCampaignFailed(to, ownerName, campaignName string, failedCount int) error {
+	subject := fmt.Sprintf("Campaign failed: %s", campaignName)
+
+	textBody := fmt.Sprintf(`Hello %s,
+
+Your campaign "%s" has failed. All %d watermarking jobs failed permanently.
+
+You can retry individual jobs from the campaign detail page.
+`, ownerName, campaignName, failedCount)
+
+	htmlBody := fmt.Sprintf(`<html><body>
+<p>Hello %s,</p>
+<p>Your campaign "<strong>%s</strong>" has failed. All <strong>%d</strong> watermarking jobs failed permanently.</p>
+<p>You can retry individual jobs from the campaign detail page.</p>
+</body></html>`, ownerName, campaignName, failedCount)
+
+	return m.sendMultipart(to, subject, textBody, htmlBody)
+}
+
 func (m *Mailer) sendMultipart(to, subject, textBody, htmlBody string) error {
 	if !m.Enabled() {
 		return nil

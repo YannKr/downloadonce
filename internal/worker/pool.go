@@ -22,6 +22,47 @@ import (
 	"github.com/YannKr/downloadonce/internal/webhook"
 )
 
+// backoffDelays defines the delay before each retry attempt.
+var backoffDelays = []time.Duration{
+	1 * time.Minute,
+	5 * time.Minute,
+	15 * time.Minute,
+}
+
+func nextRetryDelay(retryCount int) time.Duration {
+	if retryCount < len(backoffDelays) {
+		return backoffDelays[retryCount]
+	}
+	return backoffDelays[len(backoffDelays)-1]
+}
+
+// isPermanentFailure returns true if the error indicates a condition that will
+// never succeed on retry (e.g., corrupt input file, unknown format).
+func isPermanentFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	// FFmpeg permanent errors
+	if strings.Contains(msg, "invalid data found when processing input") ||
+		strings.Contains(msg, "moov atom not found") ||
+		strings.Contains(msg, "unknown job type") {
+		return true
+	}
+	// Input file missing
+	if strings.Contains(msg, "no such file or directory") && strings.Contains(msg, "input") {
+		return true
+	}
+	// Go-native image decode permanent errors
+	if strings.Contains(msg, "image: unknown format") ||
+		strings.Contains(msg, "invalid jpeg") ||
+		strings.Contains(msg, "invalid png") ||
+		strings.Contains(msg, "not a valid png") {
+		return true
+	}
+	return false
+}
+
 type Pool struct {
 	database *sql.DB
 	cfg      *config.Config
@@ -87,8 +128,24 @@ func (p *Pool) run(ctx context.Context, id int) {
 		}
 
 		if processErr != nil {
-			slog.Error("job failed", "job", job.ID, "error", processErr)
-			db.FailJob(p.database, job.ID, processErr.Error())
+			slog.Error("job failed", "job", job.ID, "type", job.JobType, "error", processErr)
+
+			isPermanent := isPermanentFailure(processErr)
+			var retried bool
+
+			if isPermanent {
+				db.FailJob(p.database, job.ID, processErr.Error())
+			} else {
+				delay := nextRetryDelay(job.RetryCount)
+				retried, _ = db.RetryOrFailJob(p.database, job.ID, processErr.Error(), delay)
+			}
+
+			if !retried {
+				p.publishJobFailed(job, processErr.Error())
+				p.notifyJobFailed(job, processErr.Error())
+			} else {
+				slog.Info("job scheduled for retry", "job", job.ID, "retry", job.RetryCount+1, "delay", nextRetryDelay(job.RetryCount))
+			}
 		} else {
 			db.CompleteJob(p.database, job.ID)
 			slog.Info("job completed", "job", job.ID)
@@ -157,9 +214,9 @@ func (p *Pool) processJob(ctx context.Context, job *model.Job) error {
 	// The Go-native path is always available; Python is a fallback when configured.
 	needsInvisible := campaign.InvisibleWM
 
-	// For images with invisible watermark: visible → temp PNG (lossless), then invisible → final JPEG.
+	// For images with invisible watermark: visible -> temp PNG (lossless), then invisible -> final JPEG.
 	// Using PNG for the intermediate avoids double JPEG compression which degrades the invisible watermark.
-	// For images without invisible: visible → final directly.
+	// For images without invisible: visible -> final directly.
 	visibleOutput := outputPath
 	if needsInvisible && job.JobType == "watermark_image" {
 		visibleOutput = outputPath + ".visible.png"
@@ -348,7 +405,7 @@ func (p *Pool) processDetectJob(ctx context.Context, job *model.Job) error {
 	var tokenID, campaignID, recipientID string
 
 	if valid {
-		// Exact CRC match — look up by exact token_id_hex
+		// Exact CRC match -- look up by exact token_id_hex
 		var lookupErr error
 		tokenID, campaignID, recipientID, lookupErr = db.LookupWatermarkIndex(p.database, tokenIDHex)
 		if lookupErr != nil {
@@ -410,21 +467,34 @@ func (p *Pool) saveDetectResult(jobID string, result detectResult) error {
 }
 
 func (p *Pool) checkCampaignCompletion(campaignID string) {
-	total, completed, failed, err := db.CountJobsByCampaign(p.database, campaignID)
+	total, completed, failed, pending, running, err := db.CountJobsByCampaignDetailed(p.database, campaignID)
 	if err != nil {
 		slog.Error("count jobs", "campaign", campaignID, "error", err)
 		return
 	}
-	if completed+failed < total || total == 0 {
+
+	if pending > 0 || running > 0 {
+		return // still in progress
+	}
+
+	if total == 0 {
 		return
 	}
-	if failed > 0 {
-		slog.Warn("campaign has failed jobs", "campaign", campaignID, "failed", failed, "total", total)
-	}
-	slog.Info("all campaign jobs done", "campaign", campaignID, "completed", completed, "failed", failed)
 
-	if err := db.SetCampaignReady(p.database, campaignID); err != nil {
-		slog.Error("set campaign ready", "campaign", campaignID, "error", err)
+	var newState string
+	switch {
+	case failed == 0:
+		newState = "READY"
+	case completed == 0:
+		newState = "FAILED"
+	default:
+		newState = "PARTIAL"
+	}
+
+	slog.Info("campaign completion", "campaign", campaignID, "state", newState, "completed", completed, "failed", failed)
+
+	if err := db.UpdateCampaignState(p.database, campaignID, newState); err != nil {
+		slog.Error("update campaign state", "campaign", campaignID, "error", err)
 	}
 
 	campaign, err := db.GetCampaign(p.database, campaignID)
@@ -434,24 +504,34 @@ func (p *Pool) checkCampaignCompletion(campaignID string) {
 
 	account, _ := db.GetAccountByID(p.database, campaign.AccountID)
 
-	// Send campaign ready email to account owner
-	if p.mailer != nil && p.mailer.Enabled() && account != nil {
-		go func() {
-			if err := p.mailer.SendCampaignReady(account.Email, account.Email, campaign.Name, completed); err != nil {
-				slog.Error("send campaign ready email", "error", err)
-			}
-		}()
-	}
-
-	// Dispatch campaign_ready webhook
+	// Dispatch webhook with state info
 	if p.webhook != nil {
 		p.webhook.Dispatch(campaign.AccountID, "campaign_ready", map[string]interface{}{
 			"campaign_id":      campaignID,
 			"campaign_name":    campaign.Name,
+			"state":            newState,
 			"total_tokens":     total,
 			"completed_tokens": completed,
 			"failed_tokens":    failed,
 		})
+	}
+
+	// Send appropriate email
+	if p.mailer != nil && p.mailer.Enabled() && account != nil {
+		go func() {
+			var emailErr error
+			switch newState {
+			case "READY":
+				emailErr = p.mailer.SendCampaignReady(account.Email, account.Email, campaign.Name, completed)
+			case "PARTIAL":
+				emailErr = p.mailer.SendCampaignPartial(account.Email, account.Email, campaign.Name, completed, failed)
+			case "FAILED":
+				emailErr = p.mailer.SendCampaignFailed(account.Email, account.Email, campaign.Name, failed)
+			}
+			if emailErr != nil {
+				slog.Error("send campaign completion email", "error", emailErr, "state", newState)
+			}
+		}()
 	}
 }
 
@@ -473,6 +553,42 @@ func (p *Pool) publishTokenReady(job *model.Job) {
 	evt := sse.Event{Type: "token_ready", Data: data}
 	p.sseHub.Publish("token:"+job.TokenID, evt)
 	p.sseHub.Publish("campaign:"+job.CampaignID, evt)
+}
+
+func (p *Pool) publishJobFailed(job *model.Job, errorMsg string) {
+	if p.sseHub == nil {
+		return
+	}
+	safeMsg := strings.ReplaceAll(errorMsg, `"`, `\"`)
+	data := fmt.Sprintf(`{"token_id":"%s","error":"%s"}`, job.TokenID, safeMsg)
+	evt := sse.Event{Type: "token_failed", Data: data}
+	p.sseHub.Publish("token:"+job.TokenID, evt)
+	p.sseHub.Publish("campaign:"+job.CampaignID, evt)
+}
+
+// notifyJobFailed sends an email to the campaign owner when a job fails permanently.
+func (p *Pool) notifyJobFailed(job *model.Job, errorMsg string) {
+	if p.mailer == nil || !p.mailer.Enabled() {
+		return
+	}
+	go func() {
+		token, _ := db.GetToken(p.database, job.TokenID)
+		if token == nil {
+			return
+		}
+		recipient, _ := db.GetRecipient(p.database, token.RecipientID)
+		campaign, _ := db.GetCampaign(p.database, job.CampaignID)
+		if recipient == nil || campaign == nil {
+			return
+		}
+		account, _ := db.GetAccountByID(p.database, campaign.AccountID)
+		if account == nil {
+			return
+		}
+		if err := p.mailer.SendJobFailed(account.Email, account.Email, campaign.Name, recipient.Name, errorMsg); err != nil {
+			slog.Error("send job failed email", "error", err)
+		}
+	}()
 }
 
 func sleep(ctx context.Context, d time.Duration) {

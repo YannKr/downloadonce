@@ -115,6 +115,8 @@ type Job struct {
 	ErrorMessage string
 	InputPath    string
 	ResultData   string
+	RetryCount   int
+	MaxRetries   int
 	CreatedAt    time.Time
 	StartedAt    *time.Time
 	CompletedAt  *time.Time

@@ -53,6 +53,15 @@ func (c *Cleaner) loop(ctx context.Context) {
 }
 
 func (c *Cleaner) runOnce() {
+	// Reset stuck jobs (RUNNING for too long, e.g. server crash)
+	const stuckJobThreshold = 30 * time.Minute
+	n, stuckErr := db.ResetStuckJobs(c.DB, stuckJobThreshold)
+	if stuckErr != nil {
+		slog.Error("cleanup: reset stuck jobs", "error", stuckErr)
+	} else if n > 0 {
+		slog.Warn("cleanup: reset stuck jobs", "count", n)
+	}
+
 	campaigns, err := db.ListExpiredCampaigns(c.DB)
 	if err != nil {
 		slog.Error("cleanup: list expired campaigns", "error", err)

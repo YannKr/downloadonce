@@ -36,6 +36,21 @@ function connectCampaignSSE(campaignID) {
         window.location.reload();
     });
 
+    es.addEventListener("token_failed", function(e) {
+        var data = JSON.parse(e.data);
+        var stateEl = document.getElementById("state-" + data.token_id);
+        if (stateEl) {
+            stateEl.innerHTML = '<span class="badge badge-red">FAILED</span>';
+        }
+        var cell = document.getElementById("progress-cell-" + data.token_id);
+        if (cell) {
+            cell.innerHTML = '<details><summary>Error</summary><pre style="white-space:pre-wrap;font-size:0.8em;max-width:400px;">' +
+                data.error.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre></details>';
+        }
+        // Reload to get retry button
+        window.location.reload();
+    });
+
     es.onerror = function() {
         // Reconnect handled automatically by EventSource
     };
