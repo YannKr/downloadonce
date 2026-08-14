@@ -147,11 +147,13 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 		State:       "DRAFT",
 	}
 
-	if maxDL := r.FormValue("max_downloads"); maxDL != "" {
-		if n, err := strconv.Atoi(maxDL); err == nil && n > 0 {
-			campaign.MaxDownloads = &n
-		}
+	// Default to a single download per recipient. Leaving this unset used to
+	// mean unlimited, which is the opposite of what the product promises.
+	maxDownloads := 1
+	if n, err := strconv.Atoi(r.FormValue("max_downloads")); err == nil && n > 0 {
+		maxDownloads = n
 	}
+	campaign.MaxDownloads = &maxDownloads
 
 	if expiry := r.FormValue("expires_at"); expiry != "" {
 		if t, err := time.Parse("2006-01-02T15:04", expiry); err == nil {

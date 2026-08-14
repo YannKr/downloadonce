@@ -116,7 +116,7 @@ paths:
                 name: {type: string}
                 asset_id: {type: string}
                 recipient_ids: {type: array, items: {type: string}}
-                max_downloads: {type: integer, nullable: true}
+                max_downloads: {type: integer, minimum: 1, default: 1}
                 expires_at: {type: string}
                 visible_wm: {type: boolean}
                 invisible_wm: {type: boolean}

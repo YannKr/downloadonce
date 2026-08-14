@@ -140,12 +140,18 @@ func (h *Handler) APICampaignCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// max_downloads defaults to 1 when omitted; unlimited is not a default.
+	maxDownloads := 1
+	if body.MaxDownloads != nil && *body.MaxDownloads > 0 {
+		maxDownloads = *body.MaxDownloads
+	}
+
 	campaign := &model.Campaign{
 		ID:           uuid.New().String(),
 		AccountID:    accountID,
 		AssetID:      body.AssetID,
 		Name:         body.Name,
-		MaxDownloads: body.MaxDownloads,
+		MaxDownloads: &maxDownloads,
 		VisibleWM:    body.VisibleWM,
 		InvisibleWM:  body.InvisibleWM,
 		State:        "DRAFT",
