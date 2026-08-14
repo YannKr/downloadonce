@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/db"
+	"github.com/YannKr/downloadonce/internal/safehttp"
 	"github.com/YannKr/downloadonce/internal/model"
 )
 
@@ -138,15 +139,17 @@ func postWebhook(url, secret string, payload []byte) (statusCode *int, preview s
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-DownloadOnce-Signature", "sha256="+signature)
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := safehttp.Client(10 * time.Second)
 	resp, respErr := client.Do(req)
 	if respErr != nil {
 		return nil, "", fmt.Errorf("post: %w", respErr)
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
-	preview = string(body)
+	// The response body is not kept. Storing it made every webhook a way to
+	// read back whatever the URL returned, which is the whole payoff of
+	// pointing one at an internal address. Drain and drop it.
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	code := resp.StatusCode
 	statusCode = &code
 

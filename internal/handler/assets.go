@@ -22,6 +22,7 @@ import (
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/safehttp"
 	"github.com/YannKr/downloadonce/internal/watermark"
 )
 
@@ -110,7 +111,17 @@ func (h *Handler) AssetFetchURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 30 * time.Minute}
+	if err := safehttp.ValidateURL(rawURL); err != nil {
+		h.render(w, r, "asset_upload.html", PageData{
+			Title: "Upload Asset", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
+			Error: "URL rejected: " + err.Error(),
+			Data:  assetUploadData{URLValue: rawURL},
+		})
+		return
+	}
+
+	client := safehttp.Client(30 * time.Minute)
 	resp, err := client.Get(rawURL)
 	if err != nil {
 		h.render(w, r, "asset_upload.html", PageData{
