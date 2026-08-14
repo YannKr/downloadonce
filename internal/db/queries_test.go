@@ -314,3 +314,42 @@ func TestListNonMembersIsScopedToAccount(t *testing.T) {
 		}
 	}
 }
+
+func TestGetOrCreateRecipientByEmailIsScopedToAccount(t *testing.T) {
+	database := newTestDB(t)
+	mustAccount(t, database, "acct-a")
+	mustAccount(t, database, "acct-b")
+
+	shared := "shared@example.test"
+	err := CreateRecipient(database, &model.Recipient{
+		ID: "rec-a", AccountID: "acct-a", Name: "Victim", Email: shared, Org: "Victim Ltd",
+	})
+	if err != nil {
+		t.Fatalf("create recipient: %v", err)
+	}
+
+	// acct-b asks for the same address. It must get a new unsaved record for
+	// its own account, not acct-a's row.
+	got, err := GetOrCreateRecipientByEmail(database, "acct-b", "Attacker", shared, "")
+	if err != nil {
+		t.Fatalf("get or create: %v", err)
+	}
+	if got.ID != "" {
+		t.Fatalf("returned an existing row %q owned by %s", got.ID, got.AccountID)
+	}
+	if got.AccountID != "acct-b" {
+		t.Fatalf("account = %q, want acct-b", got.AccountID)
+	}
+	if got.Name != "Attacker" || got.Org != "" {
+		t.Fatalf("returned acct-a's details: name=%q org=%q", got.Name, got.Org)
+	}
+
+	// The owning account still gets its own row back.
+	mine, err := GetOrCreateRecipientByEmail(database, "acct-a", "ignored", shared, "")
+	if err != nil {
+		t.Fatalf("get or create: %v", err)
+	}
+	if mine.ID != "rec-a" || mine.Name != "Victim" {
+		t.Fatalf("owner got %+v, want rec-a", mine)
+	}
+}

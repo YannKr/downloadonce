@@ -58,12 +58,17 @@ func GetRecipient(database *sql.DB, id string) (*model.Recipient, error) {
 	return r, err
 }
 
+// GetOrCreateRecipientByEmail looks up a recipient of accountID by email, or
+// returns an unsaved one for the caller to insert. The lookup is keyed on
+// (account_id, email) to match the table's UNIQUE constraint. Matching on
+// email alone returned another account's row.
 func GetOrCreateRecipientByEmail(database *sql.DB, accountID, name, email, org string) (*model.Recipient, error) {
 	r := &model.Recipient{}
 	var createdAt SQLiteTime
 	err := database.QueryRow(
-		`SELECT id, account_id, name, email, org, created_at FROM recipients WHERE email = ?`,
-		email,
+		`SELECT id, account_id, name, email, org, created_at
+		 FROM recipients WHERE account_id = ? AND email = ?`,
+		accountID, email,
 	).Scan(&r.ID, &r.AccountID, &r.Name, &r.Email, &r.Org, &createdAt)
 	if err == nil {
 		r.CreatedAt = createdAt.Time
