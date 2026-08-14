@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/config"
@@ -152,5 +155,88 @@ func TestAPICampaignCreateRejectsAnotherAccountsAsset(t *testing.T) {
 	}`)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404. Body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAPICampaignCreateIgnoresAnotherAccountsRecipient(t *testing.T) {
+	h := newTestHandler(t)
+	assetA, recipientA := seedAccountAssetRecipient(t, h.DB, "acct-a")
+	_, recipientB := seedAccountAssetRecipient(t, h.DB, "acct-b")
+
+	rec := postCampaign(t, h, "acct-a", `{
+		"name": "mixed recipients",
+		"asset_id": "`+assetA+`",
+		"recipient_ids": ["`+recipientA+`", "`+recipientB+`"]
+	}`)
+
+	var got struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v (%s)", err, rec.Body.String())
+	}
+
+	tokens, err := db.ListTokensByCampaign(h.DB, got.ID)
+	if err != nil {
+		t.Fatalf("list tokens: %v", err)
+	}
+	for _, tok := range tokens {
+		if tok.RecipientID == recipientB {
+			t.Fatalf("acct-b's recipient %s was bound to acct-a's campaign", recipientB)
+		}
+	}
+	if len(tokens) != 1 || tokens[0].RecipientID != recipientA {
+		t.Fatalf("got %d tokens, want exactly one for %s", len(tokens), recipientA)
+	}
+}
+
+func TestAPICampaignAddRecipientsIgnoresAnotherAccountsRecipient(t *testing.T) {
+	h := newTestHandler(t)
+	assetA, recipientA := seedAccountAssetRecipient(t, h.DB, "acct-a")
+	_, recipientB := seedAccountAssetRecipient(t, h.DB, "acct-b")
+
+	rec := postCampaign(t, h, "acct-a", `{
+		"name": "campaign",
+		"asset_id": "`+assetA+`",
+		"recipient_ids": ["`+recipientA+`"]
+	}`)
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode response: %v (%s)", err, rec.Body.String())
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/campaigns/"+created.ID+"/recipients",
+		strings.NewReader(`{"recipient_ids": ["`+recipientB+`"]}`))
+	r = r.WithContext(auth.ContextWithAccountAndRole(r.Context(), "acct-a", "member", "tester"))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", created.ID)
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+	rec2 := httptest.NewRecorder()
+	h.APICampaignAddRecipients(rec2, r)
+
+	tokens, err := db.ListTokensByCampaign(h.DB, created.ID)
+	if err != nil {
+		t.Fatalf("list tokens: %v", err)
+	}
+	for _, tok := range tokens {
+		if tok.RecipientID == recipientB {
+			t.Fatalf("acct-b's recipient %s was added to acct-a's campaign", recipientB)
+		}
+	}
+}
+
+func TestOwnedRecipientIDsDropsForeignAndUnknownIDs(t *testing.T) {
+	h := newTestHandler(t)
+	_, recipientA := seedAccountAssetRecipient(t, h.DB, "acct-a")
+	_, recipientB := seedAccountAssetRecipient(t, h.DB, "acct-b")
+
+	got := h.ownedRecipientIDs([]string{recipientA, recipientB, "does-not-exist"}, "acct-a")
+	if len(got) != 1 || got[0] != recipientA {
+		t.Fatalf("ownedRecipientIDs = %v, want [%s]", got, recipientA)
+	}
+	if len(h.ownedRecipientIDs([]string{recipientA}, "acct-b")) != 0 {
+		t.Fatal("acct-b was allowed to use acct-a's recipient")
 	}
 }

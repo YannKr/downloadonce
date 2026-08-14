@@ -76,7 +76,7 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 
 	assetID := r.FormValue("asset_id")
 	name := strings.TrimSpace(r.FormValue("name"))
-	recipientIDs := r.Form["recipient_ids"]
+	recipientIDs := h.ownedRecipientIDs(r.Form["recipient_ids"], accountID)
 	groupIDs := r.Form["group_ids"]
 
 	// Expand groups and deduplicate with directly selected recipients
@@ -493,7 +493,7 @@ func (h *Handler) CampaignAddRecipients(w http.ResponseWriter, r *http.Request) 
 	}
 
 	r.ParseForm()
-	recipientIDs := r.Form["recipient_ids"]
+	recipientIDs := h.ownedRecipientIDs(r.Form["recipient_ids"], campaign.AccountID)
 	if len(recipientIDs) == 0 {
 		setFlash(w, "No recipients selected.")
 		http.Redirect(w, r, "/campaigns/"+id, http.StatusSeeOther)

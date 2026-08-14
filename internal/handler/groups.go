@@ -162,7 +162,7 @@ func (h *Handler) GroupAddMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	r.ParseForm()
 	added := 0
-	for _, rid := range r.Form["recipient_ids"] {
+	for _, rid := range h.ownedRecipientIDs(r.Form["recipient_ids"], group.AccountID) {
 		if err := db.AddGroupMember(h.DB, id, rid); err == nil {
 			added++
 			db.InsertAuditLog(h.DB, accountID, "group_member_added", "group", id, rid, r.RemoteAddr)

@@ -172,8 +172,9 @@ func (h *Handler) APICampaignCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens := make([]*model.DownloadToken, 0, len(body.RecipientIDs))
-	for _, rid := range body.RecipientIDs {
+	recipientIDs := h.ownedRecipientIDs(body.RecipientIDs, accountID)
+	tokens := make([]*model.DownloadToken, 0, len(recipientIDs))
+	for _, rid := range recipientIDs {
 		token := &model.DownloadToken{
 			ID:           uuid.New().String(),
 			CampaignID:   campaign.ID,
@@ -431,14 +432,10 @@ func (h *Handler) APICampaignAddRecipients(w http.ResponseWriter, r *http.Reques
 		jobType = "watermark_image"
 	}
 
+	owned := h.ownedRecipientIDs(body.RecipientIDs, campaign.AccountID)
 	added := 0
-	skipped := 0
-	for _, rid := range body.RecipientIDs {
-		rec, err := db.GetRecipient(h.DB, rid)
-		if err != nil || rec == nil {
-			skipped++
-			continue
-		}
+	skipped := len(body.RecipientIDs) - len(owned)
+	for _, rid := range owned {
 		token := &model.DownloadToken{
 			ID:           uuid.New().String(),
 			CampaignID:   campaign.ID,
