@@ -490,7 +490,16 @@ func (h *Handler) APICampaignRevokeToken(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	db.ExpireToken(h.DB, tokenID)
+	revoked, err := db.ExpireTokenInCampaign(h.DB, tokenID, id)
+	if err != nil {
+		renderJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to revoke token")
+		return
+	}
+	if !revoked {
+		renderJSONError(w, http.StatusNotFound, "NOT_FOUND", "token not found")
+		return
+	}
+
 	db.InsertAuditLog(h.DB, accountID, "token_revoked", "token", tokenID, "", r.RemoteAddr)
 
 	w.WriteHeader(http.StatusNoContent)

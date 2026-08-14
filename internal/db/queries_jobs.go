@@ -247,6 +247,30 @@ func EnqueueJobIfNotExists(database *sql.DB, j *model.Job) (alreadyExists bool, 
 }
 
 // GetJobByToken returns the latest job for a given token ID.
+// GetJobByTokenInCampaign returns the most recent job for a token, but only
+// when that job belongs to the given campaign. A job's campaign_id is set from
+// the token's campaign when it is enqueued, so this also binds the token.
+func GetJobByTokenInCampaign(database *sql.DB, tokenID, campaignID string) (*model.Job, error) {
+	j := &model.Job{}
+	var createdAt SQLiteTime
+	err := database.QueryRow(`
+		SELECT id, job_type, campaign_id, token_id, state, progress,
+		       COALESCE(error_message, ''), retry_count, max_retries, created_at
+		FROM jobs WHERE token_id = ? AND campaign_id = ?
+		ORDER BY created_at DESC LIMIT 1`, tokenID, campaignID,
+	).Scan(&j.ID, &j.JobType, &j.CampaignID, &j.TokenID,
+		&j.State, &j.Progress, &j.ErrorMessage,
+		&j.RetryCount, &j.MaxRetries, &createdAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	j.CreatedAt = createdAt.Time
+	return j, nil
+}
+
 func GetJobByToken(database *sql.DB, tokenID string) (*model.Job, error) {
 	j := &model.Job{}
 	var createdAt SQLiteTime

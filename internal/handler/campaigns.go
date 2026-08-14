@@ -337,7 +337,17 @@ func (h *Handler) TokenRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db.ExpireToken(h.DB, tokenID)
+	revoked, err := db.ExpireTokenInCampaign(h.DB, tokenID, campaignID)
+	if err != nil {
+		slog.Error("revoke token", "error", err)
+		http.Error(w, "Internal error", 500)
+		return
+	}
+	if !revoked {
+		http.NotFound(w, r)
+		return
+	}
+
 	db.InsertAuditLog(h.DB, accountID, "token_revoked", "token", tokenID, "", r.RemoteAddr)
 	setFlash(w, "Token revoked.")
 	http.Redirect(w, r, "/campaigns/"+campaignID, http.StatusSeeOther)
@@ -376,8 +386,10 @@ func (h *Handler) CampaignClone(w http.ResponseWriter, r *http.Request) {
 		assetID = src.AssetID
 	}
 
+	// The asset id may come from the form, so existence is not enough: the
+	// clone's account has to own it. CampaignCreate makes the same check.
 	assetMissing := false
-	if a, _ := db.GetAsset(h.DB, assetID); a == nil {
+	if a, _ := db.GetAsset(h.DB, assetID); a == nil || a.AccountID != accountID {
 		assetMissing = true
 		assetID = ""
 	}
@@ -561,7 +573,7 @@ func (h *Handler) TokenRetry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := db.GetJobByToken(h.DB, tokenID)
+	job, err := db.GetJobByTokenInCampaign(h.DB, tokenID, campaignID)
 	if err != nil || job == nil {
 		setFlash(w, "Job not found.")
 		http.Redirect(w, r, "/campaigns/"+campaignID, http.StatusSeeOther)
