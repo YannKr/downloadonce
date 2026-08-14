@@ -97,6 +97,10 @@ func (h *Handler) DownloadPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	campaign, _ := db.GetCampaign(h.DB, token.CampaignID)
+	if campaign == nil {
+		h.render(w, r, "download_expired.html", PageData{Title: "Not Found"})
+		return
+	}
 	asset, _ := db.GetAsset(h.DB, campaign.AssetID)
 	recipient, _ := db.GetRecipient(h.DB, token.RecipientID)
 
@@ -144,6 +148,11 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	_ = consumed
 
 	campaign, _ := db.GetCampaign(h.DB, token.CampaignID)
+	if campaign == nil {
+		slog.Error("download: token has no campaign", "token", token.ID, "campaign", token.CampaignID)
+		http.NotFound(w, r)
+		return
+	}
 
 	event := &model.DownloadEvent{
 		ID:          uuid.New().String(),
