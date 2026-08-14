@@ -20,6 +20,7 @@ You can expect an acknowledgement within 72 hours and a fix or mitigation plan w
 ## Security design notes
 
 - **SESSION_SECRET** must be a random 32+ byte value. There is no default. If the variable is unset the server generates a random secret on first start and stores it in `$DATA_DIR/session_secret` with mode 0600. The server refuses to start if the value is shorter than 32 bytes or equal to the old `change-me-in-production-32-bytes!` placeholder.
+- **Client IP** is taken from the TCP peer address. `X-Forwarded-For` and `X-Real-IP` are read only when the connection comes from an address listed in `TRUSTED_PROXIES`. Without that variable a client cannot forge its own IP in the audit log or evade the rate limiter.
 - **CSRF protection** is enabled on all state-changing routes via `gorilla/csrf`.
 - **API keys** are stored as bcrypt hashes; the raw key is only shown once at creation.
 - **Passwords** are hashed with bcrypt (cost 12).

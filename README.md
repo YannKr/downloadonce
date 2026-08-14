@@ -54,6 +54,7 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 |---|---|---|
 | `BASE_URL` | `http://localhost:8080` | Public-facing URL used in download links |
 | `SESSION_SECRET` | (generated) | 32+ byte random secret. Generate: `openssl rand -hex 32`. If unset, one is generated and stored in `$DATA_DIR/session_secret` |
+| `TRUSTED_PROXIES` | — | Comma-separated CIDRs or IPs of your reverse proxies. `X-Forwarded-For` and `X-Real-IP` are read only from these addresses. Behind a local nginx or Caddy, set `127.0.0.1/32,::1/128` |
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
 | `DATA_DIR` | `./data` | Persistent storage root (assets, watermarked files, SQLite DB) |
 | `WORKER_COUNT` | `2` | Concurrent watermark encoding workers |

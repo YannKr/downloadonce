@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,6 +25,7 @@ type Config struct {
 	DataDir        string
 	BaseURL        string
 	SessionSecret  string
+	TrustedProxies []netip.Prefix
 	MaxUploadBytes int64
 	WorkerCount    int
 	FontPath       string
@@ -60,6 +63,7 @@ func Load() *Config {
 		DataDir:             envOr("DATA_DIR", "./data"),
 		BaseURL:             envOr("BASE_URL", "http://localhost:8080"),
 		SessionSecret:       envOr("SESSION_SECRET", ""),
+		TrustedProxies:      parsePrefixes(envOr("TRUSTED_PROXIES", "")),
 		MaxUploadBytes:      envInt64Or("MAX_UPLOAD_BYTES", 50*1024*1024*1024),
 		WorkerCount:         envIntOr("WORKER_COUNT", 2),
 		FontPath:            envOr("FONT_PATH", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
@@ -114,6 +118,29 @@ func (c *Config) ResolveSessionSecret() error {
 	}
 	c.SessionSecret = secret
 	return nil
+}
+
+// parsePrefixes reads a comma-separated list of CIDR blocks or bare IPs. A
+// bare IP becomes a single-address prefix. Entries that do not parse are
+// dropped with a warning, so one typo cannot widen the trusted set.
+func parsePrefixes(s string) []netip.Prefix {
+	var out []netip.Prefix
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if p, err := netip.ParsePrefix(part); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		if addr, err := netip.ParseAddr(part); err == nil {
+			out = append(out, netip.PrefixFrom(addr, addr.BitLen()))
+			continue
+		}
+		slog.Warn("TRUSTED_PROXIES: ignoring entry that is not a CIDR or IP", "entry", part)
+	}
+	return out
 }
 
 func envOr(key, fallback string) string {

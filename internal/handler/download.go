@@ -3,7 +3,6 @@ package handler
 import (
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -203,19 +202,11 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filePath)
 }
 
+// realIP returns the client IP recorded in the audit trail. Handler.RealIP has
+// already resolved r.RemoteAddr from X-Forwarded-For where the connection came
+// from a trusted proxy, so the headers must not be read again here.
 func realIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return hostOnly(r.RemoteAddr)
 }
 
 func sanitizeFilename(name string) string {

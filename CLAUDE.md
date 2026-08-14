@@ -31,6 +31,7 @@ There are no automated tests in this codebase yet.
 
 | Variable | Default | Description |
 |---|---|---|
+| `TRUSTED_PROXIES` | (none) | Comma-separated CIDRs or IPs allowed to set `X-Forwarded-For` / `X-Real-IP`. Empty means the headers are ignored |
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
 | `DATA_DIR` | `./data` | Persistent storage root |
 | `BASE_URL` | `http://localhost:8080` | Public base URL (used in download links) |
