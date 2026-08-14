@@ -89,6 +89,30 @@ Two authentication paths:
 
 Two roles: `admin` and `member`. Admin routes are under `/admin/*` and guarded by `RequireAdmin` middleware. The first account registered on a fresh install becomes admin.
 
+### Authorizing Request-Supplied IDs
+
+**A second ID taken from the request must be constrained in the query, not merely validated.**
+
+Handlers commonly check that the caller owns a parent object — a campaign, an account — and then act on a child ID that also came from the request: a token ID in the route, an `asset_id` in the form. Verifying the parent is necessary but not sufficient. The two IDs still have to be bound together. This shape survives review precisely because the ownership check is present and reads correctly; nothing on the page looks missing.
+
+Put the binding in SQL rather than in a second handler lookup, matching how the account filters are written. The query then reports no match instead of acting, and the handler turns that into a 404:
+
+```go
+// Before: the campaign is the caller's, but the token ID was never tied to it
+db.ExpireToken(h.DB, tokenID)
+
+// After: UPDATE ... WHERE id = ? AND campaign_id = ?, reporting whether a row matched
+revoked, err := db.ExpireTokenInCampaign(h.DB, tokenID, campaignID)
+if !revoked {
+    http.NotFound(w, r)
+    return
+}
+```
+
+Scoped queries live alongside their unscoped counterparts in `internal/db/queries_*.go`; keep the unscoped one only where the caller already holds the object it is acting on, as the download path does. Where a scoped query is not practical, compare ownership explicitly — `CampaignClone` requires `a.AccountID == accountID` for the asset, not just that the asset exists.
+
+When reviewing a handler: for every ID it reads from the request, name the query or comparison that constrains it to the owner or the parent. If you cannot name one, it is missing.
+
 ### Watermarking Pipeline
 
 Campaign publish triggers one job per recipient/token:
