@@ -13,10 +13,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/db"
-	"github.com/YannKr/downloadonce/internal/safehttp"
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/safehttp"
+	"github.com/google/uuid"
 )
 
 var backoffSchedule = []time.Duration{

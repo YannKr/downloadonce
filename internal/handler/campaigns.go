@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type campaignNewData struct {
@@ -390,15 +390,15 @@ func (h *Handler) CampaignClone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newCampaign := &model.Campaign{
-		ID:          uuid.New().String(),
-		AccountID:   accountID,
-		AssetID:     assetID,
-		Name:        name,
+		ID:           uuid.New().String(),
+		AccountID:    accountID,
+		AssetID:      assetID,
+		Name:         name,
 		MaxDownloads: src.MaxDownloads,
-		ExpiresAt:   newExpiry,
-		VisibleWM:   src.VisibleWM,
-		InvisibleWM: src.InvisibleWM,
-		State:       "DRAFT",
+		ExpiresAt:    newExpiry,
+		VisibleWM:    src.VisibleWM,
+		InvisibleWM:  src.InvisibleWM,
+		State:        "DRAFT",
 	}
 
 	skipped, err := db.CloneCampaign(h.DB, newCampaign, recipientIDs)

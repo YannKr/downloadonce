@@ -17,13 +17,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
 	"github.com/YannKr/downloadonce/internal/safehttp"
 	"github.com/YannKr/downloadonce/internal/watermark"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type assetUploadData struct {

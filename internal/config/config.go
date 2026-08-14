@@ -50,30 +50,30 @@ type Config struct {
 	UploadSessionTTLHours int
 
 	// Disk space monitoring
-	MaxStorageBytes    int64
+	MaxStorageBytes     int64
 	WMCompressionFactor float64
-	DiskWarnYellowPct  float64
-	DiskWarnRedPct     float64
-	DiskWarnBlockPct   float64
+	DiskWarnYellowPct   float64
+	DiskWarnRedPct      float64
+	DiskWarnBlockPct    float64
 }
 
 func Load() *Config {
 	return &Config{
-		ListenAddr:          envOr("LISTEN_ADDR", ":8080"),
-		DataDir:             envOr("DATA_DIR", "./data"),
-		BaseURL:             envOr("BASE_URL", "http://localhost:8080"),
-		SessionSecret:       envOr("SESSION_SECRET", ""),
-		TrustedProxies:      parsePrefixes(envOr("TRUSTED_PROXIES", "")),
-		MaxUploadBytes:      envInt64Or("MAX_UPLOAD_BYTES", 50*1024*1024*1024),
-		WorkerCount:         envIntOr("WORKER_COUNT", 2),
-		FontPath:            envOr("FONT_PATH", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-		LogLevel:            envOr("LOG_LEVEL", "info"),
-		VenvPath:            envOr("VENV_PATH", "/opt/venv"),
-		SMTPHost:            envOr("SMTP_HOST", ""),
-		SMTPPort:            envIntOr("SMTP_PORT", 587),
-		SMTPUser:            envOr("SMTP_USER", ""),
-		SMTPPass:            envOr("SMTP_PASS", ""),
-		SMTPFrom:            envOr("SMTP_FROM", ""),
+		ListenAddr:            envOr("LISTEN_ADDR", ":8080"),
+		DataDir:               envOr("DATA_DIR", "./data"),
+		BaseURL:               envOr("BASE_URL", "http://localhost:8080"),
+		SessionSecret:         envOr("SESSION_SECRET", ""),
+		TrustedProxies:        parsePrefixes(envOr("TRUSTED_PROXIES", "")),
+		MaxUploadBytes:        envInt64Or("MAX_UPLOAD_BYTES", 50*1024*1024*1024),
+		WorkerCount:           envIntOr("WORKER_COUNT", 2),
+		FontPath:              envOr("FONT_PATH", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+		LogLevel:              envOr("LOG_LEVEL", "info"),
+		VenvPath:              envOr("VENV_PATH", "/opt/venv"),
+		SMTPHost:              envOr("SMTP_HOST", ""),
+		SMTPPort:              envIntOr("SMTP_PORT", 587),
+		SMTPUser:              envOr("SMTP_USER", ""),
+		SMTPPass:              envOr("SMTP_PASS", ""),
+		SMTPFrom:              envOr("SMTP_FROM", ""),
 		CleanupIntervalMins:   envIntOr("CLEANUP_INTERVAL_MINS", 60),
 		AllowRegistration:     envBoolOr("ALLOW_REGISTRATION", false),
 		UploadSessionTTLHours: envIntOr("UPLOAD_SESSION_TTL_HOURS", 24),

@@ -11,13 +11,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gorilla/csrf"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/config"
 	"github.com/YannKr/downloadonce/internal/diskstat"
 	"github.com/YannKr/downloadonce/internal/email"
 	"github.com/YannKr/downloadonce/internal/sse"
 	"github.com/YannKr/downloadonce/internal/webhook"
+	"github.com/gorilla/csrf"
 )
 
 // maxMultipartMemory caps what ParseMultipartForm keeps in RAM. Anything
