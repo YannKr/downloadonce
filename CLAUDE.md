@@ -25,7 +25,7 @@ scp downloadonce setup.sh root@<host>:~
 ssh root@<host> 'BASE_URL=https://dl.example.com ./setup.sh'
 ```
 
-There are no automated tests in this codebase yet.
+Seven packages carry tests — `config`, `db`, `handler`, `safehttp`, `sse`, `watermark/dct` and `watermark/dwt` — covering secret validation, scoped queries, handler authorization, outbound-URL rejection and the SSE hub. Run them with `go test ./... -count=1`. CI gates on the same suite plus `gofmt -l .` reporting nothing, `go vet ./...` and `govulncheck ./...`, so run those before pushing.
 
 ## Environment Variables
 
@@ -35,7 +35,8 @@ There are no automated tests in this codebase yet.
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
 | `DATA_DIR` | `./data` | Persistent storage root |
 | `BASE_URL` | `http://localhost:8080` | Public base URL (used in download links) |
-| `SESSION_SECRET` | (generated) | 32+ byte secret for session/CSRF signing. If unset, a random one is generated and stored in `$DATA_DIR/session_secret` |
+| `SESSION_SECRET` | (generated) | 32+ byte secret for session/CSRF signing. There is no built-in default: if unset, a random one is generated and stored in `$DATA_DIR/session_secret` (mode 0600). Startup fails if a value is supplied but is shorter than 32 bytes or is a known placeholder — see `config.PlaceholderSecrets`, which is append-only |
+| `MAX_UPLOAD_BYTES` | `5368709120` | Maximum single request body (5 GB), applied to asset upload, detect and import. The chunked upload API caps each chunk instead |
 | `WORKER_COUNT` | `2` | Concurrent watermark encoding workers |
 | `FONT_PATH` | `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` | Font for visible watermark overlay |
 | `VENV_PATH` | `/opt/venv` | Python venv with `invisible-watermark` + `opencv-python-headless` |
@@ -61,10 +62,12 @@ No Redis, no external job queue. The `jobs` table in SQLite is the queue.
 - **`internal/db`** — all SQL queries, one file per domain (`queries_assets.go`, `queries_campaigns.go`, etc.). SQLite opened in WAL mode with a single connection (`MaxOpenConns(1)`).
 - **`internal/model`** — plain Go structs for all domain types; no ORM
 - **`internal/handler`** — HTTP handlers wired in `routes.go`; `handler.go` owns template parsing and `render()`/`renderAuth()` helpers; `PageData` is the universal template context struct
-- **`internal/watermark`** — FFmpeg subprocess (`ffmpeg.go`), ImageMagick subprocess (`imagemagick.go`), Python subprocess wrappers for invisible watermark (`invisible.go`), and the 16-byte payload encoding/CRC logic (`payload.go`)
+- **`internal/watermark`** — FFmpeg subprocess (`ffmpeg.go`), ImageMagick subprocess (`imagemagick.go`), the Go-native DWT-DCT-SVD embedder/detector (`image_go.go` over the `dct/` and `dwt/` subpackages), Python subprocess wrappers for the same (`invisible.go`), and the 16-byte payload encoding/CRC logic (`payload.go`)
 - **`internal/worker`** — `Pool` polls for `PENDING` jobs, dispatches to `processJob()` (watermarking) or `processDetectJob()` (leak detection), updates progress via SSE, fires webhooks and emails on campaign completion
 - **`internal/sse`** — lightweight pub/sub hub; channels are named `campaign:<id>` and `token:<id>`
 - **`internal/auth`** — bcrypt password helpers and session context keys
+- **`internal/safehttp`** — the HTTP client for any URL a user supplies (webhook targets, asset imports). It refuses loopback, private, link-local and multicast destinations, re-checking on each connection so a name that re-resolves cannot slip past. Use it for outbound requests instead of `http.Get`
+- **`internal/diskstat`** — cached filesystem usage sampling behind the storage warning thresholds
 - **`internal/cleanup`** — periodic goroutine that expires campaigns and deletes watermarked files from disk
 - **`internal/email`** — SMTP mailer (optional)
 - **`internal/webhook`** — outgoing HTTP webhook dispatcher
@@ -118,7 +121,7 @@ When reviewing a handler: for every ID it reads from the request, name the query
 Campaign publish triggers one job per recipient/token:
 
 1. **Video** (`watermark_video`): FFmpeg re-encodes to H.265 with two `drawtext` overlays (corner + center, low opacity). Optionally followed by invisible DWT-DCT embedding via `embed_watermark.py` on extracted key frames.
-2. **Image** (`watermark_image`): ImageMagick composites a visible text overlay → temp PNG → Python `embed_watermark.py` for invisible DWT-DCT → final JPEG.
+2. **Image** (`watermark_image`): ImageMagick composites a visible text overlay → temp PNG → invisible DWT-DCT-SVD → final JPEG. The Go-native embedder runs first; Python `embed_watermark.py` is only the fallback when it errors and `ScriptsDir` is configured, and a failure of both degrades to the visible-only output rather than failing the job.
 
 The watermark payload (16 bytes) encodes: version (2 bytes) + truncated SHA-256 of token ID (8 bytes) + truncated SHA-256 of campaign ID (4 bytes) + CRC-16 (2 bytes). See `internal/watermark/payload.go`.
 
