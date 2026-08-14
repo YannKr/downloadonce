@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -142,5 +144,50 @@ func TestTokenRetryOnlyAffectsJobsOfTheNamedCampaign(t *testing.T) {
 	}
 	if job.State != "FAILED" {
 		t.Fatalf("acct-b's job state = %s, want it left FAILED", job.State)
+	}
+}
+
+func TestCampaignCloneRejectsAnAssetTheAccountDoesNotOwn(t *testing.T) {
+	h := newTestHandler(t)
+	assetA, recipientA := seedAccountAssetRecipient(t, h.DB, "acct-a")
+	assetB, _ := seedAccountAssetRecipient(t, h.DB, "acct-b")
+
+	campaignID := uuid.New().String()
+	err := db.CreateCampaign(h.DB, &model.Campaign{
+		ID: campaignID, AccountID: "acct-a", AssetID: assetA,
+		Name: "source", State: "READY",
+	})
+	if err != nil {
+		t.Fatalf("create campaign: %v", err)
+	}
+	one := 1
+	err = db.CreateToken(h.DB, &model.DownloadToken{
+		ID: uuid.New().String(), CampaignID: campaignID, RecipientID: recipientA,
+		MaxDownloads: &one, State: "ACTIVE",
+	})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+
+	// acct-a clones its own campaign but points the copy at acct-b's asset.
+	form := url.Values{"asset_id": {assetB}, "name": {"copy"}}
+	r := httptest.NewRequest(http.MethodPost, "/campaigns/"+campaignID+"/clone",
+		strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", campaignID)
+	ctx := context.WithValue(r.Context(), chi.RouteCtxKey, rctx)
+	ctx = auth.ContextWithAccountAndRole(ctx, "acct-a", "member", "tester")
+	rec := httptest.NewRecorder()
+	h.CampaignClone(rec, r.WithContext(ctx))
+
+	campaigns, err := db.ListCampaigns(h.DB, "acct-a", false, false)
+	if err != nil {
+		t.Fatalf("list campaigns: %v", err)
+	}
+	for _, c := range campaigns {
+		if c.ID != campaignID && c.AssetID == assetB {
+			t.Fatalf("clone %s was bound to acct-b's asset %s", c.ID, assetB)
+		}
 	}
 }

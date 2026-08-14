@@ -386,8 +386,10 @@ func (h *Handler) CampaignClone(w http.ResponseWriter, r *http.Request) {
 		assetID = src.AssetID
 	}
 
+	// The asset id may come from the form, so existence is not enough: the
+	// clone's account has to own it. CampaignCreate makes the same check.
 	assetMissing := false
-	if a, _ := db.GetAsset(h.DB, assetID); a == nil {
+	if a, _ := db.GetAsset(h.DB, assetID); a == nil || a.AccountID != accountID {
 		assetMissing = true
 		assetID = ""
 	}
