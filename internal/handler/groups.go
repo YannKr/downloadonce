@@ -84,7 +84,7 @@ func (h *Handler) GroupDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	members, _ := db.ListGroupMembers(h.DB, id, group.AccountID)
-	nonMembers, _ := db.ListNonMembers(h.DB, id)
+	nonMembers, _ := db.ListNonMembers(h.DB, id, group.AccountID)
 	h.renderAuth(w, r, "recipient_group_detail.html", group.Name, groupDetailData{
 		Group:      *group,
 		Members:    members,

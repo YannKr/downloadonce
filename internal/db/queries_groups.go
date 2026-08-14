@@ -98,14 +98,18 @@ func ListGroupMembers(database *sql.DB, groupID, accountID string) ([]model.Reci
 	return members, rows.Err()
 }
 
-func ListNonMembers(database *sql.DB, groupID string) ([]model.Recipient, error) {
+// ListNonMembers returns the recipients of accountID that are not yet in the
+// group. The account filter is what keeps the group page from listing every
+// tenant's contacts.
+func ListNonMembers(database *sql.DB, groupID, accountID string) ([]model.Recipient, error) {
 	rows, err := database.Query(`
 		SELECT r.id, r.account_id, r.name, r.email, r.org, r.created_at
 		FROM recipients r
-		WHERE r.id NOT IN (
+		WHERE r.account_id = ?
+		  AND r.id NOT IN (
 			SELECT recipient_id FROM recipient_group_members WHERE group_id = ?
 		)
-		ORDER BY r.name ASC`, groupID)
+		ORDER BY r.name ASC`, accountID, groupID)
 	if err != nil {
 		return nil, err
 	}

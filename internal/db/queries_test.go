@@ -282,3 +282,35 @@ func TestIncrementDownloadCountAllowsSecondUseWhenMaxIsTwo(t *testing.T) {
 		t.Fatalf("third increment err = %v, want sql.ErrNoRows", err)
 	}
 }
+
+func TestListNonMembersIsScopedToAccount(t *testing.T) {
+	database := newTestDB(t)
+	mustAccount(t, database, "acct-a")
+	mustAccount(t, database, "acct-b")
+	mustRecipient(t, database, "rec-a1", "acct-a")
+	mustRecipient(t, database, "rec-a2", "acct-a")
+	mustRecipient(t, database, "rec-b", "acct-b")
+
+	if err := CreateRecipientGroup(database, "grp-a", "acct-a", "Group A", ""); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if err := AddGroupMember(database, "grp-a", "rec-a1"); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+
+	nonMembers, err := ListNonMembers(database, "grp-a", "acct-a")
+	if err != nil {
+		t.Fatalf("list non-members: %v", err)
+	}
+	if len(nonMembers) != 1 {
+		t.Fatalf("got %d non-members %v, want only rec-a2", len(nonMembers), nonMembers)
+	}
+	if nonMembers[0].ID != "rec-a2" {
+		t.Fatalf("non-member = %q, want rec-a2", nonMembers[0].ID)
+	}
+	for _, r := range nonMembers {
+		if r.AccountID != "acct-a" {
+			t.Fatalf("group page would show %s of account %s", r.Email, r.AccountID)
+		}
+	}
+}
