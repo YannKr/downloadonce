@@ -123,6 +123,21 @@ func IncrementDownloadCount(database *sql.DB, tokenID string) (newCount int, con
 	return
 }
 
+// ExpireTokenInCampaign marks a token expired, but only when it belongs to the
+// given campaign. It reports whether a row matched, so a caller that has
+// verified the campaign's owner can refuse a token id from anywhere else.
+func ExpireTokenInCampaign(database *sql.DB, tokenID, campaignID string) (bool, error) {
+	res, err := database.Exec(
+		`UPDATE download_tokens SET state = 'EXPIRED' WHERE id = ? AND campaign_id = ?`,
+		tokenID, campaignID,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 func ExpireToken(database *sql.DB, id string) error {
 	_, err := database.Exec(`UPDATE download_tokens SET state = 'EXPIRED' WHERE id = ?`, id)
 	return err
