@@ -1,0 +1,82 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestResolveSessionSecretRejectsPlaceholder(t *testing.T) {
+	c := &Config{DataDir: t.TempDir(), SessionSecret: PlaceholderSecret}
+	if err := c.ResolveSessionSecret(); err == nil {
+		t.Fatal("placeholder secret was accepted")
+	}
+}
+
+func TestResolveSessionSecretRejectsShortSecret(t *testing.T) {
+	c := &Config{DataDir: t.TempDir(), SessionSecret: "too-short"}
+	if err := c.ResolveSessionSecret(); err == nil {
+		t.Fatal("short secret was accepted")
+	}
+}
+
+func TestResolveSessionSecretKeepsAGoodSecret(t *testing.T) {
+	secret := "0123456789abcdef0123456789abcdef"
+	c := &Config{DataDir: t.TempDir(), SessionSecret: secret}
+	if err := c.ResolveSessionSecret(); err != nil {
+		t.Fatalf("good secret rejected: %v", err)
+	}
+	if c.SessionSecret != secret {
+		t.Fatalf("secret = %q, want %q", c.SessionSecret, secret)
+	}
+}
+
+func TestResolveSessionSecretGeneratesAndPersists(t *testing.T) {
+	dir := t.TempDir()
+
+	c := &Config{DataDir: dir}
+	if err := c.ResolveSessionSecret(); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if len(c.SessionSecret) < MinSecretLen {
+		t.Fatalf("generated secret is %d bytes, want at least %d", len(c.SessionSecret), MinSecretLen)
+	}
+
+	path := filepath.Join(dir, "session_secret")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat secret file: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Fatalf("secret file mode = %04o, want 0600", perm)
+	}
+
+	// A restart must reuse the same secret, otherwise every restart logs
+	// everyone out.
+	c2 := &Config{DataDir: dir}
+	if err := c2.ResolveSessionSecret(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if c2.SessionSecret != c.SessionSecret {
+		t.Fatal("second start generated a different secret")
+	}
+}
+
+func TestParsePrefixes(t *testing.T) {
+	got := parsePrefixes("127.0.0.1, 10.0.0.0/8, ::1, nonsense, ")
+	if len(got) != 3 {
+		t.Fatalf("parsed %d prefixes %v, want 3", len(got), got)
+	}
+	if got[0].String() != "127.0.0.1/32" {
+		t.Errorf("bare IPv4 became %s, want 127.0.0.1/32", got[0])
+	}
+	if got[1].String() != "10.0.0.0/8" {
+		t.Errorf("CIDR became %s, want 10.0.0.0/8", got[1])
+	}
+	if got[2].String() != "::1/128" {
+		t.Errorf("bare IPv6 became %s, want ::1/128", got[2])
+	}
+	if len(parsePrefixes("")) != 0 {
+		t.Error("empty TRUSTED_PROXIES produced prefixes")
+	}
+}
