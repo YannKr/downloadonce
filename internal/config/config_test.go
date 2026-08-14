@@ -3,13 +3,68 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestResolveSessionSecretRejectsPlaceholder(t *testing.T) {
-	c := &Config{DataDir: t.TempDir(), SessionSecret: PlaceholderSecret}
+func TestResolveSessionSecretRejectsEveryPublishedPlaceholder(t *testing.T) {
+	for _, secret := range PlaceholderSecrets {
+		c := &Config{DataDir: t.TempDir(), SessionSecret: secret}
+		if err := c.ResolveSessionSecret(); err == nil {
+			t.Errorf("published placeholder %q was accepted", secret)
+		}
+	}
+}
+
+// The value .env.example used to ship. It is 36 bytes, so a length check alone
+// lets it through.
+func TestResolveSessionSecretRejectsTheShippedExampleValue(t *testing.T) {
+	const shipped = "change-me-before-going-to-production"
+	if len(shipped) < MinSecretLen {
+		t.Fatalf("this test is pointless if the value is short: %d bytes", len(shipped))
+	}
+	c := &Config{DataDir: t.TempDir(), SessionSecret: shipped}
 	if err := c.ResolveSessionSecret(); err == nil {
-		t.Fatal("placeholder secret was accepted")
+		t.Fatal("the secret shipped in .env.example was accepted")
+	}
+}
+
+func TestIsPlaceholderSecret(t *testing.T) {
+	for _, s := range []string{
+		"change-me-in-production-32-bytes!",
+		"change-me-before-going-to-production",
+		"CHANGE-ME-BEFORE-GOING-TO-PRODUCTION",
+		"  change-me  ",
+		"changeme",
+		"change_me_now_please_this_is_long_enough",
+	} {
+		if !IsPlaceholderSecret(s) {
+			t.Errorf("IsPlaceholderSecret(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{
+		"0123456789abcdef0123456789abcdef",
+		"an-exchange-mechanism-for-tokens",
+	} {
+		if IsPlaceholderSecret(s) {
+			t.Errorf("IsPlaceholderSecret(%q) = true, want false", s)
+		}
+	}
+}
+
+// .env.example must not ship a usable SESSION_SECRET.
+func TestEnvExampleShipsNoSessionSecret(t *testing.T) {
+	b, err := os.ReadFile("../../.env.example")
+	if err != nil {
+		t.Fatalf("read .env.example: %v", err)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "SESSION_SECRET=") {
+			continue
+		}
+		value := strings.TrimPrefix(line, "SESSION_SECRET=")
+		t.Fatalf(".env.example ships SESSION_SECRET=%q; it must be commented out or empty", value)
 	}
 }
 

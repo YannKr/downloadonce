@@ -11,11 +11,45 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
-// PlaceholderSecret is the value that earlier releases used as the default
-// SESSION_SECRET. It signs the session cookie, so it must never be accepted.
-const PlaceholderSecret = "change-me-in-production-32-bytes!"
+// PlaceholderSecrets are values that have been published in this repository as
+// example or default SESSION_SECRETs. They sign the session cookie and the CSRF
+// token, so a deployment that copies one is open to anyone who has read the
+// repository. Add to this list, never remove from it.
+var PlaceholderSecrets = []string{
+	"change-me-in-production-32-bytes!",
+	"change-me-before-going-to-production",
+	"change-me",
+	"changeme",
+	"secret",
+}
+
+// IsPlaceholderSecret reports whether s is a known-public value. The comparison
+// ignores case and surrounding space so a near-copy is caught too.
+func IsPlaceholderSecret(s string) bool {
+	s = strings.ToLower(strings.TrimSpace(s))
+	for _, p := range PlaceholderSecrets {
+		if s == strings.ToLower(p) {
+			return true
+		}
+	}
+	// Anything that still says "change me" was never changed. Split on
+	// separators so "exchange mechanism" is not mistaken for one.
+	words := strings.FieldsFunc(s, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	for i, w := range words {
+		if w == "changeme" {
+			return true
+		}
+		if w == "change" && i+1 < len(words) && words[i+1] == "me" {
+			return true
+		}
+	}
+	return false
+}
 
 // MinSecretLen is the smallest SESSION_SECRET the server accepts.
 const MinSecretLen = 32
@@ -91,8 +125,8 @@ func Load() *Config {
 // secret shorter than MinSecretLen.
 func (c *Config) ResolveSessionSecret() error {
 	if c.SessionSecret != "" {
-		if c.SessionSecret == PlaceholderSecret {
-			return errors.New("SESSION_SECRET is the placeholder value: set a random secret or unset it to have one generated")
+		if IsPlaceholderSecret(c.SessionSecret) {
+			return errors.New("SESSION_SECRET is a known-public example value: set a random secret or unset it to have one generated")
 		}
 		if len(c.SessionSecret) < MinSecretLen {
 			return fmt.Errorf("SESSION_SECRET must be at least %d bytes", MinSecretLen)
@@ -102,7 +136,7 @@ func (c *Config) ResolveSessionSecret() error {
 
 	path := filepath.Join(c.DataDir, "session_secret")
 	if b, err := os.ReadFile(path); err == nil {
-		if s := strings.TrimSpace(string(b)); len(s) >= MinSecretLen && s != PlaceholderSecret {
+		if s := strings.TrimSpace(string(b)); len(s) >= MinSecretLen && !IsPlaceholderSecret(s) {
 			c.SessionSecret = s
 			return nil
 		}
