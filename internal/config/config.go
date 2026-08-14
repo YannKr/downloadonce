@@ -1,9 +1,22 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 )
+
+// PlaceholderSecret is the value that earlier releases used as the default
+// SESSION_SECRET. It signs the session cookie, so it must never be accepted.
+const PlaceholderSecret = "change-me-in-production-32-bytes!"
+
+// MinSecretLen is the smallest SESSION_SECRET the server accepts.
+const MinSecretLen = 32
 
 type Config struct {
 	ListenAddr     string
@@ -46,7 +59,7 @@ func Load() *Config {
 		ListenAddr:          envOr("LISTEN_ADDR", ":8080"),
 		DataDir:             envOr("DATA_DIR", "./data"),
 		BaseURL:             envOr("BASE_URL", "http://localhost:8080"),
-		SessionSecret:       envOr("SESSION_SECRET", "change-me-in-production-32-bytes!"),
+		SessionSecret:       envOr("SESSION_SECRET", ""),
 		MaxUploadBytes:      envInt64Or("MAX_UPLOAD_BYTES", 50*1024*1024*1024),
 		WorkerCount:         envIntOr("WORKER_COUNT", 2),
 		FontPath:            envOr("FONT_PATH", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
@@ -66,6 +79,41 @@ func Load() *Config {
 		DiskWarnRedPct:        envFloat64Or("DISK_WARN_RED_PCT", 10.0),
 		DiskWarnBlockPct:      envFloat64Or("DISK_WARN_BLOCK_PCT", 5.0),
 	}
+}
+
+// ResolveSessionSecret validates SESSION_SECRET. When the variable is unset it
+// reads a secret from <DataDir>/session_secret, generating and persisting a
+// random one on first start. It refuses the old placeholder value and any
+// secret shorter than MinSecretLen.
+func (c *Config) ResolveSessionSecret() error {
+	if c.SessionSecret != "" {
+		if c.SessionSecret == PlaceholderSecret {
+			return errors.New("SESSION_SECRET is the placeholder value: set a random secret or unset it to have one generated")
+		}
+		if len(c.SessionSecret) < MinSecretLen {
+			return fmt.Errorf("SESSION_SECRET must be at least %d bytes", MinSecretLen)
+		}
+		return nil
+	}
+
+	path := filepath.Join(c.DataDir, "session_secret")
+	if b, err := os.ReadFile(path); err == nil {
+		if s := strings.TrimSpace(string(b)); len(s) >= MinSecretLen && s != PlaceholderSecret {
+			c.SessionSecret = s
+			return nil
+		}
+	}
+
+	buf := make([]byte, MinSecretLen)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Errorf("generate session secret: %w", err)
+	}
+	secret := hex.EncodeToString(buf)
+	if err := os.WriteFile(path, []byte(secret), 0600); err != nil {
+		return fmt.Errorf("persist session secret: %w", err)
+	}
+	c.SessionSecret = secret
+	return nil
 }
 
 func envOr(key, fallback string) string {

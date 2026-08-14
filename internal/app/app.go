@@ -29,6 +29,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		}
 	}
 
+	if err := cfg.ResolveSessionSecret(); err != nil {
+		return err
+	}
+
 	scriptsDir, err := extractScripts()
 	if err != nil {
 		return err

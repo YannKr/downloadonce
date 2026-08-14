@@ -19,7 +19,7 @@ You can expect an acknowledgement within 72 hours and a fix or mitigation plan w
 
 ## Security design notes
 
-- **SESSION_SECRET** must be set to a random 32+ byte value in production. The default is intentionally a visible placeholder that will not pass a secrets scan.
+- **SESSION_SECRET** must be a random 32+ byte value. There is no default. If the variable is unset the server generates a random secret on first start and stores it in `$DATA_DIR/session_secret` with mode 0600. The server refuses to start if the value is shorter than 32 bytes or equal to the old `change-me-in-production-32-bytes!` placeholder.
 - **CSRF protection** is enabled on all state-changing routes via `gorilla/csrf`.
 - **API keys** are stored as bcrypt hashes; the raw key is only shown once at creation.
 - **Passwords** are hashed with bcrypt (cost 12).

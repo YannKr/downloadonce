@@ -18,7 +18,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o downloadonce ./cmd/server
 docker compose up --build
 
 # Run with custom config
-BASE_URL=https://example.com SESSION_SECRET=mysecret ./server
+BASE_URL=https://example.com SESSION_SECRET=$(openssl rand -hex 32) ./server
 
 # Deploy to a Debian Trixie LXC / VM (see setup.sh)
 scp downloadonce setup.sh root@<host>:~
@@ -34,7 +34,7 @@ There are no automated tests in this codebase yet.
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
 | `DATA_DIR` | `./data` | Persistent storage root |
 | `BASE_URL` | `http://localhost:8080` | Public base URL (used in download links) |
-| `SESSION_SECRET` | (weak default) | 32-byte secret for session/CSRF signing — **must be changed in production** |
+| `SESSION_SECRET` | (generated) | 32+ byte secret for session/CSRF signing. If unset, a random one is generated and stored in `$DATA_DIR/session_secret` |
 | `WORKER_COUNT` | `2` | Concurrent watermark encoding workers |
 | `FONT_PATH` | `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` | Font for visible watermark overlay |
 | `VENV_PATH` | `/opt/venv` | Python venv with `invisible-watermark` + `opencv-python-headless` |
