@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
 )
 
@@ -206,7 +207,7 @@ func (m *Mailer) sendMultipart(to, subject, textBody, htmlBody string) error {
 	body += htmlBody + "\r\n"
 	body += "--" + boundary + "--\r\n"
 
-	addr := fmt.Sprintf("%s:%d", m.Host, m.Port)
+	addr := net.JoinHostPort(m.Host, strconv.Itoa(m.Port))
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
