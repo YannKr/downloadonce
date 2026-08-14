@@ -353,3 +353,54 @@ func TestGetOrCreateRecipientByEmailIsScopedToAccount(t *testing.T) {
 		t.Fatalf("owner got %+v, want rec-a", mine)
 	}
 }
+
+// The consumed flag must agree with the token's state for every max_downloads,
+// including the boundary where one download is the whole allowance.
+func TestIncrementDownloadCountConsumedFlagTracksState(t *testing.T) {
+	for _, max := range []int{1, 2, 3} {
+		database := newTestDB(t)
+		m := max
+		tokenID := seedToken(t, database, &m)
+
+		for call := 1; call <= max; call++ {
+			count, consumed, err := IncrementDownloadCount(database, tokenID)
+			if err != nil {
+				t.Fatalf("max=%d call=%d: %v", max, call, err)
+			}
+			if count != call {
+				t.Errorf("max=%d call=%d: count = %d, want %d", max, call, count, call)
+			}
+
+			token, err := GetToken(database, tokenID)
+			if err != nil {
+				t.Fatalf("get token: %v", err)
+			}
+			wantConsumed := call >= max
+			if consumed != wantConsumed {
+				t.Errorf("max=%d call=%d: consumed = %v, want %v", max, call, consumed, wantConsumed)
+			}
+			if got := token.State == "CONSUMED"; consumed != got {
+				t.Errorf("max=%d call=%d: consumed = %v but state = %s", max, call, consumed, token.State)
+			}
+		}
+	}
+}
+
+// An unlimited token is never consumed and stays usable.
+func TestIncrementDownloadCountUnlimitedTokenIsNeverConsumed(t *testing.T) {
+	database := newTestDB(t)
+	tokenID := seedToken(t, database, nil)
+
+	for call := 1; call <= 3; call++ {
+		count, consumed, err := IncrementDownloadCount(database, tokenID)
+		if err != nil {
+			t.Fatalf("call %d: %v", call, err)
+		}
+		if count != call {
+			t.Errorf("call %d: count = %d, want %d", call, count, call)
+		}
+		if consumed {
+			t.Errorf("call %d: consumed = true for a token with no max_downloads", call)
+		}
+	}
+}
