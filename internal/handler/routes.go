@@ -16,6 +16,7 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(h.RealIP)
+	r.Use(h.SecurityHeaders)
 	r.Use(h.RequireSetup)
 
 	csrfProtect := csrf.Protect(

@@ -117,7 +117,7 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auth.SetSessionCookie(w, sessionID, h.Cfg.SessionSecret)
+	auth.SetSessionCookie(w, sessionID, h.Cfg.SessionSecret, strings.HasPrefix(h.Cfg.BaseURL, "https"))
 	db.InsertAuditLog(h.DB, account.ID, "login", "account", account.ID, "", r.RemoteAddr)
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }

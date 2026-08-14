@@ -75,6 +75,22 @@ func hostOnly(addr string) string {
 	return addr
 }
 
+// SecurityHeaders sets the response headers that cost nothing and close off
+// clickjacking, MIME sniffing and referrer leakage of download links. HSTS is
+// only sent when the site is configured for HTTPS.
+func (h *Handler) SecurityHeaders(next http.Handler) http.Handler {
+	https := strings.HasPrefix(h.Cfg.BaseURL, "https")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		if https {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (h *Handler) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var accountID string
