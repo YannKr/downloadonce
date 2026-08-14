@@ -98,7 +98,7 @@ func Load() *Config {
 		BaseURL:               envOr("BASE_URL", "http://localhost:8080"),
 		SessionSecret:         envOr("SESSION_SECRET", ""),
 		TrustedProxies:        parsePrefixes(envOr("TRUSTED_PROXIES", "")),
-		MaxUploadBytes:        envInt64Or("MAX_UPLOAD_BYTES", 50*1024*1024*1024),
+		MaxUploadBytes:        envInt64Or("MAX_UPLOAD_BYTES", 5*1024*1024*1024),
 		WorkerCount:           envIntOr("WORKER_COUNT", 2),
 		FontPath:              envOr("FONT_PATH", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
 		LogLevel:              envOr("LOG_LEVEL", "info"),

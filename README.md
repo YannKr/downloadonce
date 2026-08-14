@@ -58,7 +58,7 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
 | `DATA_DIR` | `./data` | Persistent storage root (assets, watermarked files, SQLite DB) |
 | `WORKER_COUNT` | `2` | Concurrent watermark encoding workers |
-| `MAX_UPLOAD_BYTES` | `53687091200` | Maximum upload file size (50 GB) |
+| `MAX_UPLOAD_BYTES` | `5368709120` | Maximum size of a single request body (5 GB). Raise it for larger files, or use the chunked upload API, which caps each chunk instead |
 | `ALLOW_REGISTRATION` | `false` | Allow public self-registration (off = invite-only via admin) |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `FONT_PATH` | `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` | Font used for visible watermark overlay |
@@ -146,8 +146,8 @@ server {
     ssl_session_cache   shared:SSL:10m;
     ssl_session_timeout 10m;
 
-    # Match app MAX_UPLOAD_BYTES default (50 GB)
-    client_max_body_size 50g;
+    # Match app MAX_UPLOAD_BYTES default (5 GB)
+    client_max_body_size 5g;
 
     proxy_http_version 1.1;
 
@@ -208,8 +208,8 @@ server {
 NPM sets `X-Real-IP` and `X-Forwarded-For` only inside its own generated `location /` block, not at the `server {}` level. Custom location blocks added via the **Advanced** tab are siblings of that block and receive no IP headers by default. Each custom block must include them explicitly:
 
 ```nginx
-# Match app MAX_UPLOAD_BYTES (50 GB)
-client_max_body_size 50g;
+# Match app MAX_UPLOAD_BYTES (5 GB)
+client_max_body_size 5g;
 
 # SSE — real-time progress events
 location ~ ^/(d/[^/]+|campaigns/[^/]+)/events$ {

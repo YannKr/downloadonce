@@ -135,3 +135,13 @@ func TestParsePrefixes(t *testing.T) {
 		t.Error("empty TRUSTED_PROXIES produced prefixes")
 	}
 }
+
+// A cap only caps if its default is a real limit.
+func TestMaxUploadBytesDefaultIsBounded(t *testing.T) {
+	os.Unsetenv("MAX_UPLOAD_BYTES")
+	cfg := Load()
+	const tenGB = int64(10) * 1024 * 1024 * 1024
+	if cfg.MaxUploadBytes <= 0 || cfg.MaxUploadBytes > tenGB {
+		t.Fatalf("MAX_UPLOAD_BYTES default = %d, want a positive value no larger than %d", cfg.MaxUploadBytes, tenGB)
+	}
+}
