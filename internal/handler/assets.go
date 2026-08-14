@@ -301,6 +301,14 @@ func (h *Handler) processAssetFromReader(accountID string, r io.Reader, original
 
 func (h *Handler) AssetThumbnail(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	accountID := auth.AccountFromContext(r.Context())
+
+	asset, err := db.GetAsset(h.DB, id)
+	if err != nil || asset == nil || (asset.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
 	thumbPath := filepath.Join(h.Cfg.DataDir, "originals", id, "thumb.jpg")
 	if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
 		http.NotFound(w, r)
