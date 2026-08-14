@@ -17,12 +17,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/safehttp"
 	"github.com/YannKr/downloadonce/internal/watermark"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type assetUploadData struct {
@@ -30,7 +31,8 @@ type assetUploadData struct {
 }
 
 func (h *Handler) AssetList(w http.ResponseWriter, r *http.Request) {
-	assets, err := db.ListAssets(h.DB)
+	accountID := auth.AccountFromContext(r.Context())
+	assets, err := db.ListAssets(h.DB, accountID, auth.IsAdmin(r.Context()))
 	if err != nil {
 		slog.Error("list assets", "error", err)
 		http.Error(w, "Internal error", 500)
@@ -46,7 +48,8 @@ func (h *Handler) AssetUploadForm(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, h.Cfg.MaxUploadBytes)
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		h.renderAuth(w, r, "asset_upload.html", "Upload Assets", nil)
 		return
 	}
@@ -109,7 +112,17 @@ func (h *Handler) AssetFetchURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 30 * time.Minute}
+	if err := safehttp.ValidateURL(rawURL); err != nil {
+		h.render(w, r, "asset_upload.html", PageData{
+			Title: "Upload Asset", Authenticated: true,
+			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
+			Error: "URL rejected: " + err.Error(),
+			Data:  assetUploadData{URLValue: rawURL},
+		})
+		return
+	}
+
+	client := safehttp.Client(30 * time.Minute)
 	resp, err := client.Get(rawURL)
 	if err != nil {
 		h.render(w, r, "asset_upload.html", PageData{
@@ -288,6 +301,14 @@ func (h *Handler) processAssetFromReader(accountID string, r io.Reader, original
 
 func (h *Handler) AssetThumbnail(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	accountID := auth.AccountFromContext(r.Context())
+
+	asset, err := db.GetAsset(h.DB, id)
+	if err != nil || asset == nil || (asset.AccountID != accountID && !auth.IsAdmin(r.Context())) {
+		http.NotFound(w, r)
+		return
+	}
+
 	thumbPath := filepath.Join(h.Cfg.DataDir, "originals", id, "thumb.jpg")
 	if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
 		http.NotFound(w, r)

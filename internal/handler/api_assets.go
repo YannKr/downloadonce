@@ -13,12 +13,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
 	"github.com/YannKr/downloadonce/internal/watermark"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type apiAsset struct {
@@ -55,7 +55,8 @@ func assetToAPI(a *model.Asset) apiAsset {
 func (h *Handler) APIAssetUpload(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
-	if err := r.ParseMultipartForm(2 << 30); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, h.Cfg.MaxUploadBytes)
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		renderJSONError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to parse multipart form")
 		return
 	}
@@ -204,22 +205,11 @@ func (h *Handler) APIAssetList(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 	isAdmin := auth.IsAdmin(r.Context())
 
-	assets, err := db.ListAssets(h.DB)
+	assets, err := db.ListAssets(h.DB, accountID, isAdmin)
 	if err != nil {
 		slog.Error("api list assets", "error", err)
 		renderJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list assets")
 		return
-	}
-
-	// Filter by account unless admin
-	if !isAdmin {
-		filtered := assets[:0]
-		for _, a := range assets {
-			if a.AccountID == accountID {
-				filtered = append(filtered, a)
-			}
-		}
-		assets = filtered
 	}
 
 	page, perPage := paginate(r)

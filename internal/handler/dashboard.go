@@ -10,7 +10,7 @@ import (
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
-	assets, _ := db.ListAssets(h.DB)
+	assets, _ := db.ListAssets(h.DB, accountID, false)
 	campaigns, _ := db.ListCampaigns(h.DB, accountID, false, false)
 	events, _ := db.ListRecentDownloadEvents(h.DB, accountID, 20)
 

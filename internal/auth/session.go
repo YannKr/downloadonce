@@ -21,7 +21,9 @@ const AccountIDKey contextKey = "account_id"
 const RoleKey contextKey = "role"
 const NameKey contextKey = "name"
 
-func SetSessionCookie(w http.ResponseWriter, sessionID, secret string) {
+// SetSessionCookie writes the signed session cookie. Pass secure=true when the
+// site is served over HTTPS so the cookie is never sent in clear text.
+func SetSessionCookie(w http.ResponseWriter, sessionID, secret string, secure bool) {
 	sig := sign(sessionID, secret)
 	value := sessionID + "." + sig
 	http.SetCookie(w, &http.Cookie{
@@ -29,6 +31,7 @@ func SetSessionCookie(w http.ResponseWriter, sessionID, secret string) {
 		Value:    value,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(SessionMaxAge.Seconds()),
 	})

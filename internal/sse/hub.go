@@ -42,9 +42,11 @@ func (h *Hub) Subscribe(topic string) (<-chan Event, func()) {
 			delete(h.clients, topic)
 		}
 		h.mu.Unlock()
-		// drain channel to prevent goroutine leaks
-		for range ch {
-		}
+		// No close and no drain here. Publish copies the subscriber set under
+		// the lock and then sends outside it, so closing could panic a send
+		// that is already in flight, and draining a channel nobody closes
+		// blocks forever. Once the channel is out of the map it stops
+		// receiving and is collected with the handler.
 	}
 
 	return ch, unsub

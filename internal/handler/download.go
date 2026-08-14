@@ -1,18 +1,20 @@
 package handler
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type downloadPageData struct {
@@ -98,6 +100,10 @@ func (h *Handler) DownloadPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	campaign, _ := db.GetCampaign(h.DB, token.CampaignID)
+	if campaign == nil {
+		h.render(w, r, "download_expired.html", PageData{Title: "Not Found"})
+		return
+	}
 	asset, _ := db.GetAsset(h.DB, campaign.AssetID)
 	recipient, _ := db.GetRecipient(h.DB, token.RecipientID)
 
@@ -137,14 +143,44 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, consumed, err := db.IncrementDownloadCount(h.DB, token.ID)
+	// Open the file before the download is counted. A missing or unreadable
+	// file used to burn the recipient's only download and then 404.
+	filePath := filepath.Join(h.Cfg.DataDir, *token.WatermarkedPath)
+	f, err := os.Open(filePath)
 	if err != nil {
+		slog.Error("download: open file", "error", err, "token", token.ID)
+		http.Error(w, "File not ready", http.StatusServiceUnavailable)
+		return
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil || fi.IsDir() {
+		slog.Error("download: stat file", "error", err, "token", token.ID)
+		http.Error(w, "File not ready", http.StatusServiceUnavailable)
+		return
+	}
+
+	campaign, _ := db.GetCampaign(h.DB, token.CampaignID)
+	if campaign == nil {
+		slog.Error("download: token has no campaign", "token", token.ID, "campaign", token.CampaignID)
+		http.NotFound(w, r)
+		return
+	}
+
+	// The UPDATE is the authority on whether this request may have the file.
+	// It only matches a token that is still ACTIVE, so of two parallel
+	// requests for a single-use link exactly one wins and the other is told
+	// the link is used. Nothing is served unless a row changed.
+	_, _, err = db.IncrementDownloadCount(h.DB, token.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "Link already used", http.StatusGone)
+		return
+	}
+	if err != nil {
+		slog.Error("download: increment count", "error", err, "token", token.ID)
 		http.Error(w, "Internal error", 500)
 		return
 	}
-	_ = consumed
-
-	campaign, _ := db.GetCampaign(h.DB, token.CampaignID)
 
 	event := &model.DownloadEvent{
 		ID:          uuid.New().String(),
@@ -194,28 +230,19 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	filePath := filepath.Join(h.Cfg.DataDir, *token.WatermarkedPath)
 	ext := filepath.Ext(filePath)
 	filename := sanitizeFilename(campaign.Name) + ext
 
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf(`attachment; filename="%s"`, filename))
-	http.ServeFile(w, r, filePath)
+	http.ServeContent(w, r, filename, fi.ModTime(), f)
 }
 
+// realIP returns the client IP recorded in the audit trail. Handler.RealIP has
+// already resolved r.RemoteAddr from X-Forwarded-For where the connection came
+// from a trusted proxy, so the headers must not be read again here.
 func realIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return hostOnly(r.RemoteAddr)
 }
 
 func sanitizeFilename(name string) string {

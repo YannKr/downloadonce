@@ -11,14 +11,36 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gorilla/csrf"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/config"
+	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/diskstat"
 	"github.com/YannKr/downloadonce/internal/email"
 	"github.com/YannKr/downloadonce/internal/sse"
 	"github.com/YannKr/downloadonce/internal/webhook"
+	"github.com/gorilla/csrf"
 )
+
+// maxMultipartMemory caps what ParseMultipartForm keeps in RAM. Anything
+// larger spills to a temp file. The total request size is capped separately
+// with http.MaxBytesReader and MAX_UPLOAD_BYTES.
+const maxMultipartMemory = 32 << 20 // 32 MiB
+
+// ownedRecipientIDs drops any recipient that ownerID does not own. Recipient
+// IDs arrive from form posts and JSON bodies, so binding one to a campaign or
+// a group without this check attaches another account's contact and exposes
+// its name and email through the token and member lists.
+func (h *Handler) ownedRecipientIDs(ids []string, ownerID string) []string {
+	owned := make([]string, 0, len(ids))
+	for _, rid := range ids {
+		rec, err := db.GetRecipient(h.DB, rid)
+		if err != nil || rec == nil || rec.AccountID != ownerID {
+			continue
+		}
+		owned = append(owned, rid)
+	}
+	return owned
+}
 
 type Handler struct {
 	DB        *sql.DB

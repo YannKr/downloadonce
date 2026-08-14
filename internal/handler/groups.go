@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type groupListData struct {
@@ -84,7 +84,7 @@ func (h *Handler) GroupDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	members, _ := db.ListGroupMembers(h.DB, id, group.AccountID)
-	nonMembers, _ := db.ListNonMembers(h.DB, id)
+	nonMembers, _ := db.ListNonMembers(h.DB, id, group.AccountID)
 	h.renderAuth(w, r, "recipient_group_detail.html", group.Name, groupDetailData{
 		Group:      *group,
 		Members:    members,
@@ -162,7 +162,7 @@ func (h *Handler) GroupAddMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	r.ParseForm()
 	added := 0
-	for _, rid := range r.Form["recipient_ids"] {
+	for _, rid := range h.ownedRecipientIDs(r.Form["recipient_ids"], group.AccountID) {
 		if err := db.AddGroupMember(h.DB, id, rid); err == nil {
 			added++
 			db.InsertAuditLog(h.DB, accountID, "group_member_added", "group", id, rid, r.RemoteAddr)

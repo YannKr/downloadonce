@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type apiCampaign struct {
@@ -135,9 +135,15 @@ func (h *Handler) APICampaignCreate(w http.ResponseWriter, r *http.Request) {
 		renderJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get asset")
 		return
 	}
-	if asset == nil {
+	if asset == nil || asset.AccountID != accountID {
 		renderJSONError(w, http.StatusNotFound, "NOT_FOUND", "asset not found")
 		return
+	}
+
+	// max_downloads defaults to 1 when omitted; unlimited is not a default.
+	maxDownloads := 1
+	if body.MaxDownloads != nil && *body.MaxDownloads > 0 {
+		maxDownloads = *body.MaxDownloads
 	}
 
 	campaign := &model.Campaign{
@@ -145,7 +151,7 @@ func (h *Handler) APICampaignCreate(w http.ResponseWriter, r *http.Request) {
 		AccountID:    accountID,
 		AssetID:      body.AssetID,
 		Name:         body.Name,
-		MaxDownloads: body.MaxDownloads,
+		MaxDownloads: &maxDownloads,
 		VisibleWM:    body.VisibleWM,
 		InvisibleWM:  body.InvisibleWM,
 		State:        "DRAFT",
@@ -166,8 +172,9 @@ func (h *Handler) APICampaignCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens := make([]*model.DownloadToken, 0, len(body.RecipientIDs))
-	for _, rid := range body.RecipientIDs {
+	recipientIDs := h.ownedRecipientIDs(body.RecipientIDs, accountID)
+	tokens := make([]*model.DownloadToken, 0, len(recipientIDs))
+	for _, rid := range recipientIDs {
 		token := &model.DownloadToken{
 			ID:           uuid.New().String(),
 			CampaignID:   campaign.ID,
@@ -425,14 +432,10 @@ func (h *Handler) APICampaignAddRecipients(w http.ResponseWriter, r *http.Reques
 		jobType = "watermark_image"
 	}
 
+	owned := h.ownedRecipientIDs(body.RecipientIDs, campaign.AccountID)
 	added := 0
-	skipped := 0
-	for _, rid := range body.RecipientIDs {
-		rec, err := db.GetRecipient(h.DB, rid)
-		if err != nil || rec == nil {
-			skipped++
-			continue
-		}
+	skipped := len(body.RecipientIDs) - len(owned)
+	for _, rid := range owned {
 		token := &model.DownloadToken{
 			ID:           uuid.New().String(),
 			CampaignID:   campaign.ID,

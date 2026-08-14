@@ -29,6 +29,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		}
 	}
 
+	if err := cfg.ResolveSessionSecret(); err != nil {
+		return err
+	}
+
 	scriptsDir, err := extractScripts()
 	if err != nil {
 		return err
@@ -99,9 +103,15 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	h.DiskCache = diskCache
 	router := h.Routes(staticFS, authRL)
 
+	// No ReadTimeout or WriteTimeout: uploads, large downloads and the SSE
+	// streams are all long-lived by design and a whole-request deadline would
+	// cut them off. ReadHeaderTimeout and IdleTimeout are what stop a slow
+	// client from holding a connection open for nothing.
 	srv := &http.Server{
-		Addr:    cfg.ListenAddr,
-		Handler: router,
+		Addr:              cfg.ListenAddr,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {

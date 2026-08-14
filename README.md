@@ -42,7 +42,7 @@ Visit **http://localhost:8080** — the first registered account becomes admin a
 | Deployment | Requirements |
 |---|---|
 | **Docker (recommended)** | Docker + Docker Compose — everything else (FFmpeg, ImageMagick, Python) is bundled in the image |
-| **Bare metal** | Go 1.22+, `ffmpeg`, `imagemagick`, `python3`, pip packages `invisible-watermark` + `opencv-python-headless` |
+| **Bare metal** | Go 1.26.6+, `ffmpeg`, `imagemagick`, `python3`, pip packages `invisible-watermark` + `opencv-python-headless` |
 
 ---
 
@@ -53,11 +53,12 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | Variable | Default | Description |
 |---|---|---|
 | `BASE_URL` | `http://localhost:8080` | Public-facing URL used in download links |
-| `SESSION_SECRET` | — | **Required.** 32+ byte random secret. Generate: `openssl rand -hex 32` |
+| `SESSION_SECRET` | (generated) | 32+ byte random secret. Generate: `openssl rand -hex 32`. If unset, one is generated and stored in `$DATA_DIR/session_secret` |
+| `TRUSTED_PROXIES` | — | Comma-separated CIDRs or IPs of your reverse proxies. `X-Forwarded-For` and `X-Real-IP` are read only from these addresses. Behind a local nginx or Caddy, set `127.0.0.1/32,::1/128` |
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
 | `DATA_DIR` | `./data` | Persistent storage root (assets, watermarked files, SQLite DB) |
 | `WORKER_COUNT` | `2` | Concurrent watermark encoding workers |
-| `MAX_UPLOAD_BYTES` | `53687091200` | Maximum upload file size (50 GB) |
+| `MAX_UPLOAD_BYTES` | `5368709120` | Maximum size of a single request body (5 GB). Raise it for larger files, or use the chunked upload API, which caps each chunk instead |
 | `ALLOW_REGISTRATION` | `false` | Allow public self-registration (off = invite-only via admin) |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `FONT_PATH` | `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` | Font used for visible watermark overlay |
@@ -145,8 +146,8 @@ server {
     ssl_session_cache   shared:SSL:10m;
     ssl_session_timeout 10m;
 
-    # Match app MAX_UPLOAD_BYTES default (50 GB)
-    client_max_body_size 50g;
+    # Match app MAX_UPLOAD_BYTES default (5 GB)
+    client_max_body_size 5g;
 
     proxy_http_version 1.1;
 
@@ -207,8 +208,8 @@ server {
 NPM sets `X-Real-IP` and `X-Forwarded-For` only inside its own generated `location /` block, not at the `server {}` level. Custom location blocks added via the **Advanced** tab are siblings of that block and receive no IP headers by default. Each custom block must include them explicitly:
 
 ```nginx
-# Match app MAX_UPLOAD_BYTES (50 GB)
-client_max_body_size 50g;
+# Match app MAX_UPLOAD_BYTES (5 GB)
+client_max_body_size 5g;
 
 # SSE — real-time progress events
 location ~ ^/(d/[^/]+|campaigns/[^/]+)/events$ {
@@ -263,7 +264,7 @@ Single-binary, single-process — no external services required beyond the syste
 | Video watermarking | FFmpeg subprocess with `drawtext` overlay |
 | Image watermarking | ImageMagick subprocess + Python DWT-DCT embedding |
 | Invisible watermark | `invisible-watermark` Python library |
-| File delivery | Pre-computed watermarked files served directly |
+| File delivery | Watermarked files served directly; a link opened before its file is ready enqueues the job on demand and shows a progress page |
 | File embedding | Templates, static assets, migrations, and Python scripts compiled into the binary |
 
 The 16-byte watermark payload encodes: version (2 B) + truncated SHA-256 of token ID (8 B) + truncated SHA-256 of campaign ID (4 B) + CRC-16 checksum (2 B).

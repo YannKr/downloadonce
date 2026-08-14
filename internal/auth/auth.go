@@ -7,8 +7,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// BcryptCost is the bcrypt work factor for new password and API key hashes.
+// It is above bcrypt.DefaultCost (10), which is what SECURITY.md has always
+// claimed. Existing hashes keep their own cost and still verify.
+const BcryptCost = 12
+
 func HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
 	return string(hash), err
 }
 

@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -9,6 +11,85 @@ import (
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 )
+
+// RealIP rewrites r.RemoteAddr to the client IP address. X-Forwarded-For and
+// X-Real-IP are only read when the connection itself came from an address in
+// TRUSTED_PROXIES; otherwise any client could set its own IP and defeat the
+// rate limiter and the audit log. Everything downstream reads r.RemoteAddr.
+func (h *Handler) RealIP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.RemoteAddr = clientIP(r, h.Cfg.TrustedProxies)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func clientIP(r *http.Request, trusted []netip.Prefix) string {
+	remote := hostOnly(r.RemoteAddr)
+	if len(trusted) == 0 || !trustedAddr(remote, trusted) {
+		return remote
+	}
+
+	// Walk X-Forwarded-For right to left and take the first hop that is not
+	// one of our own proxies. Entries to the left of it are attacker-supplied.
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		for i := len(parts) - 1; i >= 0; i-- {
+			addr, err := netip.ParseAddr(strings.TrimSpace(parts[i]))
+			if err != nil {
+				continue
+			}
+			if !prefixesContain(trusted, addr) {
+				return addr.String()
+			}
+		}
+	}
+	if addr, err := netip.ParseAddr(strings.TrimSpace(r.Header.Get("X-Real-IP"))); err == nil {
+		return addr.String()
+	}
+	return remote
+}
+
+func trustedAddr(host string, trusted []netip.Prefix) bool {
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	return prefixesContain(trusted, addr)
+}
+
+func prefixesContain(trusted []netip.Prefix, addr netip.Addr) bool {
+	addr = addr.Unmap()
+	for _, p := range trusted {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// hostOnly strips the port from a "host:port" address, if there is one.
+func hostOnly(addr string) string {
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
+}
+
+// SecurityHeaders sets the response headers that cost nothing and close off
+// clickjacking, MIME sniffing and referrer leakage of download links. HSTS is
+// only sent when the site is configured for HTTPS.
+func (h *Handler) SecurityHeaders(next http.Handler) http.Handler {
+	https := strings.HasPrefix(h.Cfg.BaseURL, "https")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		if https {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func (h *Handler) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -120,11 +201,7 @@ func (h *Handler) requireAPIAuth(next http.Handler) http.Handler {
 func (h *Handler) apiRateLimit(rl *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := r.RemoteAddr
-			if fwd := r.Header.Get("X-Real-Ip"); fwd != "" {
-				ip = fwd
-			}
-			limiter := rl.Get(ip)
+			limiter := rl.Get(r.RemoteAddr)
 			tokens := limiter.Tokens()
 			burst := rl.Burst()
 

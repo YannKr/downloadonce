@@ -15,7 +15,8 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
+	r.Use(h.RealIP)
+	r.Use(h.SecurityHeaders)
 	r.Use(h.RequireSetup)
 
 	csrfProtect := csrf.Protect(
@@ -90,9 +91,15 @@ func (h *Handler) Routes(staticFS fs.FS, authRL *RateLimiter) chi.Router {
 		r.Post("/reset-password", h.ResetPasswordSubmit)
 	})
 
-	r.Get("/d/{token}", h.DownloadPage)
-	r.Get("/d/{token}/file", h.DownloadFile)
-	r.Get("/d/{token}/events", h.TokenSSE)
+	// Public download routes (rate-limited). Token guessing and repeated
+	// fetches of the same link must not be free.
+	dlRL := NewRateLimiter(1.0, 20) // 1 req/sec sustained, burst 20
+	r.Group(func(r chi.Router) {
+		r.Use(dlRL.Middleware)
+		r.Get("/d/{token}", h.DownloadPage)
+		r.Get("/d/{token}/file", h.DownloadFile)
+		r.Get("/d/{token}/events", h.TokenSSE)
+	})
 
 	r.Group(func(r chi.Router) {
 		r.Use(h.RequireAuth)

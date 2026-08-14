@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 func (h *Handler) DetectForm(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +21,8 @@ func (h *Handler) DetectForm(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DetectSubmit(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
-	if err := r.ParseMultipartForm(h.Cfg.MaxUploadBytes); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, h.Cfg.MaxUploadBytes)
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		h.render(w, r, "detect.html", PageData{
 			Title: "Detect Watermark", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
@@ -101,6 +102,12 @@ func (h *Handler) DetectResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if job == nil {
+		http.Error(w, "Not found", 404)
+		return
+	}
+	// EnqueueDetectJob stores the submitting account in campaign_id, which is
+	// how APIDetectGet checks ownership. This page never checked at all.
+	if job.CampaignID != auth.AccountFromContext(r.Context()) && !auth.IsAdmin(r.Context()) {
 		http.Error(w, "Not found", 404)
 		return
 	}

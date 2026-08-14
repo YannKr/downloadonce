@@ -99,6 +99,15 @@ func ActivateToken(database *sql.DB, id, watermarkedPath, sha256 string, sizeByt
 	return err
 }
 
+// IncrementDownloadCount counts one download against the token and reports the
+// new count and whether the token is now spent. It matches only an ACTIVE
+// token, so it is the authority on whether a download may proceed: sql.ErrNoRows
+// means the caller must serve nothing.
+//
+// Note on the SQL: the CASE in SET reads the pre-update download_count and so
+// adds 1, while RETURNING reads the updated row. Writing the same condition two
+// ways is a trap, so RETURNING reports the state the CASE just set instead of
+// recomputing the comparison.
 func IncrementDownloadCount(database *sql.DB, tokenID string) (newCount int, consumed bool, err error) {
 	err = database.QueryRow(`
 		UPDATE download_tokens
@@ -108,7 +117,7 @@ func IncrementDownloadCount(database *sql.DB, tokenID string) (newCount int, con
 		        ELSE state
 		    END
 		WHERE id = ? AND state = 'ACTIVE'
-		RETURNING download_count, (max_downloads IS NOT NULL AND download_count >= max_downloads)`,
+		RETURNING download_count, state = 'CONSUMED'`,
 		tokenID,
 	).Scan(&newCount, &consumed)
 	return

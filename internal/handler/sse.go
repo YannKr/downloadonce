@@ -6,11 +6,26 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
+	"github.com/YannKr/downloadonce/internal/auth"
+	"github.com/YannKr/downloadonce/internal/db"
 )
 
 func (h *Handler) CampaignSSE(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if _, err := uuid.Parse(id); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// The events on this topic carry token IDs, and a token ID is the whole
+	// download URL. Only the campaign's owner may subscribe.
+	campaign, err := db.GetCampaign(h.DB, id)
+	if err != nil || campaign == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if campaign.AccountID != auth.AccountFromContext(r.Context()) && !auth.IsAdmin(r.Context()) {
 		http.NotFound(w, r)
 		return
 	}

@@ -18,7 +18,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o downloadonce ./cmd/server
 docker compose up --build
 
 # Run with custom config
-BASE_URL=https://example.com SESSION_SECRET=mysecret ./server
+BASE_URL=https://example.com SESSION_SECRET=$(openssl rand -hex 32) ./server
 
 # Deploy to a Debian Trixie LXC / VM (see setup.sh)
 scp downloadonce setup.sh root@<host>:~
@@ -31,10 +31,11 @@ There are no automated tests in this codebase yet.
 
 | Variable | Default | Description |
 |---|---|---|
+| `TRUSTED_PROXIES` | (none) | Comma-separated CIDRs or IPs allowed to set `X-Forwarded-For` / `X-Real-IP`. Empty means the headers are ignored |
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
 | `DATA_DIR` | `./data` | Persistent storage root |
 | `BASE_URL` | `http://localhost:8080` | Public base URL (used in download links) |
-| `SESSION_SECRET` | (weak default) | 32-byte secret for session/CSRF signing — **must be changed in production** |
+| `SESSION_SECRET` | (generated) | 32+ byte secret for session/CSRF signing. If unset, a random one is generated and stored in `$DATA_DIR/session_secret` |
 | `WORKER_COUNT` | `2` | Concurrent watermark encoding workers |
 | `FONT_PATH` | `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` | Font for visible watermark overlay |
 | `VENV_PATH` | `/opt/venv` | Python venv with `invisible-watermark` + `opencv-python-headless` |
@@ -97,7 +98,9 @@ Campaign publish triggers one job per recipient/token:
 
 The watermark payload (16 bytes) encodes: version (2 bytes) + truncated SHA-256 of token ID (8 bytes) + truncated SHA-256 of campaign ID (4 bytes) + CRC-16 (2 bytes). See `internal/watermark/payload.go`.
 
-Pre-computed watermarked files are stored at `data/watermarked/<campaign_id>/<token_id>.<ext>`. Downloads serve these files directly — no on-demand processing.
+Watermarked files are stored at `data/watermarked/<campaign_id>/<token_id>.<ext>`. Publishing a campaign normally watermarks every token up front and the download then serves the finished file directly.
+
+There is one exception. If a recipient opens a link whose token is still `PENDING` — the campaign was published while the worker was behind, or the job failed and was cleared — `DownloadPage` enqueues the watermark job on demand and shows `download_preparing.html` with live progress. See `internal/handler/download.go`.
 
 ### Template Rendering
 

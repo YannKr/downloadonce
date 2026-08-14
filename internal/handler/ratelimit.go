@@ -85,14 +85,12 @@ func (rl *RateLimiter) Get(ip string) *rate.Limiter {
 	return rl.getLimiter(ip)
 }
 
-// Middleware returns an HTTP middleware that rate-limits by client IP.
+// Middleware returns an HTTP middleware that rate-limits by client IP. It
+// keys on r.RemoteAddr, which Handler.RealIP has already resolved from a
+// trusted proxy header where one applies.
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
-		if fwd := r.Header.Get("X-Real-Ip"); fwd != "" {
-			ip = fwd
-		}
-		if !rl.getLimiter(ip).Allow() {
+		if !rl.getLimiter(r.RemoteAddr).Allow() {
 			http.Error(w, "Too many requests", http.StatusTooManyRequests)
 			return
 		}

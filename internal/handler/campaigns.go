@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type campaignNewData struct {
@@ -56,8 +56,8 @@ func (h *Handler) CampaignList(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CampaignNewForm(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
-	assets, _ := db.ListAssets(h.DB)
-	recipients, _ := db.ListRecipients(h.DB)
+	assets, _ := db.ListAssets(h.DB, accountID, false)
+	recipients, _ := db.ListRecipients(h.DB, accountID, false)
 	groups, _ := db.ListRecipientGroups(h.DB, accountID)
 	h.renderAuth(w, r, "campaign_new.html", "New Campaign", campaignNewData{
 		Assets:         assets,
@@ -76,7 +76,7 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 
 	assetID := r.FormValue("asset_id")
 	name := strings.TrimSpace(r.FormValue("name"))
-	recipientIDs := r.Form["recipient_ids"]
+	recipientIDs := h.ownedRecipientIDs(r.Form["recipient_ids"], accountID)
 	groupIDs := r.Form["group_ids"]
 
 	// Expand groups and deduplicate with directly selected recipients
@@ -99,8 +99,8 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if assetID == "" || name == "" || len(finalIDs) == 0 {
-		assets, _ := db.ListAssets(h.DB)
-		recipients, _ := db.ListRecipients(h.DB)
+		assets, _ := db.ListAssets(h.DB, accountID, false)
+		recipients, _ := db.ListRecipients(h.DB, accountID, false)
 		groups, _ := db.ListRecipientGroups(h.DB, accountID)
 		selected := make(map[string]bool)
 		for _, rid := range recipientIDs {
@@ -132,7 +132,7 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	asset, err := db.GetAsset(h.DB, assetID)
-	if err != nil || asset == nil {
+	if err != nil || asset == nil || asset.AccountID != accountID {
 		http.Error(w, "Invalid asset", 400)
 		return
 	}
@@ -147,11 +147,13 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 		State:       "DRAFT",
 	}
 
-	if maxDL := r.FormValue("max_downloads"); maxDL != "" {
-		if n, err := strconv.Atoi(maxDL); err == nil && n > 0 {
-			campaign.MaxDownloads = &n
-		}
+	// Default to a single download per recipient. Leaving this unset used to
+	// mean unlimited, which is the opposite of what the product promises.
+	maxDownloads := 1
+	if n, err := strconv.Atoi(r.FormValue("max_downloads")); err == nil && n > 0 {
+		maxDownloads = n
 	}
+	campaign.MaxDownloads = &maxDownloads
 
 	if expiry := r.FormValue("expires_at"); expiry != "" {
 		if t, err := time.Parse("2006-01-02T15:04", expiry); err == nil {
@@ -243,7 +245,7 @@ func (h *Handler) CampaignDetail(w http.ResponseWriter, r *http.Request) {
 	for _, t := range tokens {
 		added[t.RecipientID] = struct{}{}
 	}
-	allRecipients, _ := db.ListRecipients(h.DB)
+	allRecipients, _ := db.ListRecipients(h.DB, accountID, false)
 	var available []model.Recipient
 	for _, rec := range allRecipients {
 		if _, ok := added[rec.ID]; !ok {
@@ -388,15 +390,15 @@ func (h *Handler) CampaignClone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newCampaign := &model.Campaign{
-		ID:          uuid.New().String(),
-		AccountID:   accountID,
-		AssetID:     assetID,
-		Name:        name,
+		ID:           uuid.New().String(),
+		AccountID:    accountID,
+		AssetID:      assetID,
+		Name:         name,
 		MaxDownloads: src.MaxDownloads,
-		ExpiresAt:   newExpiry,
-		VisibleWM:   src.VisibleWM,
-		InvisibleWM: src.InvisibleWM,
-		State:       "DRAFT",
+		ExpiresAt:    newExpiry,
+		VisibleWM:    src.VisibleWM,
+		InvisibleWM:  src.InvisibleWM,
+		State:        "DRAFT",
 	}
 
 	skipped, err := db.CloneCampaign(h.DB, newCampaign, recipientIDs)
@@ -491,7 +493,7 @@ func (h *Handler) CampaignAddRecipients(w http.ResponseWriter, r *http.Request) 
 	}
 
 	r.ParseForm()
-	recipientIDs := r.Form["recipient_ids"]
+	recipientIDs := h.ownedRecipientIDs(r.Form["recipient_ids"], campaign.AccountID)
 	if len(recipientIDs) == 0 {
 		setFlash(w, "No recipients selected.")
 		http.Redirect(w, r, "/campaigns/"+id, http.StatusSeeOther)

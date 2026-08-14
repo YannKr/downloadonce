@@ -3,14 +3,14 @@ package model
 import "time"
 
 type Account struct {
-	ID                string
-	Email             string
-	Name              string
-	PasswordHash      string
-	Role              string
-	Enabled           bool
-	NotifyOnDownload  bool
-	CreatedAt         time.Time
+	ID               string
+	Email            string
+	Name             string
+	PasswordHash     string
+	Role             string
+	Enabled          bool
+	NotifyOnDownload bool
+	CreatedAt        time.Time
 }
 
 type Session struct {

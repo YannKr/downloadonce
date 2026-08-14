@@ -156,19 +156,20 @@ Spec 07 (Go Watermarking)
 
 ## 4. Resolved Migration Numbering
 
-Multiple specs independently proposed `006_*.sql`. The table below assigns non-conflicting sequential numbers for a deployment ordering that respects dependencies. Specs 03 and 08 require no migrations.
+Multiple specs independently proposed `006_*.sql`. The table below records the numbers that actually shipped in `migrations/`. Specs 03 and 08 require no migrations.
 
 | Migration file | Spec | Contents | Modifies existing tables? |
 |---|---|---|---|
 | `006_recipient_groups.sql` | 02 | `recipient_groups`, `recipient_group_members` | No — additive only |
 | `007_upload_sessions.sql` | 01 | `upload_sessions` | No — additive only |
-| `008_job_retry.sql` | 04 | `jobs` (3 new columns), `campaigns` (recreated with expanded CHECK) | Yes — `campaigns` table recreated |
+| `008_wm_algorithm.sql` | 07 | `watermark_index` and `download_tokens` (1 new column each) | Yes — additive columns |
 | `009_webhook_delivery.sql` | 06 | `webhook_deliveries` | No — additive only |
-| `010_wm_algorithm.sql` | 07 | `watermark_index` and `download_tokens` (1 new column each) | Yes — additive columns |
+| `010_archive_campaigns.sql` | — | `campaigns` (recreated to add `ARCHIVED` to the state CHECK) | Yes — `campaigns` table recreated |
+| `011_job_retry.sql` | 04 | `jobs` (3 new columns), `campaigns` (recreated with expanded CHECK) | Yes — `campaigns` table recreated |
 
-**Important notes on migration 008:**
+**Important notes on migration 011:**
 
-`008_job_retry.sql` recreates the `campaigns` table to expand the `state` CHECK constraint to include `PARTIAL` and `FAILED`. SQLite does not support `ALTER TABLE … ALTER COLUMN`. The migration uses the standard SQLite pattern: `CREATE TABLE campaigns_new … ; INSERT INTO campaigns_new SELECT * FROM campaigns; DROP TABLE campaigns; ALTER TABLE campaigns_new RENAME TO campaigns`. This runs inside an implicit migration transaction in `db.Migrate()` — verify that `db.Migrate()` uses `BEGIN EXCLUSIVE` or equivalent to make this safe on a live database before deploying.
+`011_job_retry.sql` recreates the `campaigns` table to expand the `state` CHECK constraint to include `PARTIAL` and `FAILED`. `010_archive_campaigns.sql` does the same for `ARCHIVED`. SQLite does not support `ALTER TABLE … ALTER COLUMN`. Both use the standard SQLite pattern: `CREATE TABLE campaigns_new … ; INSERT INTO campaigns_new SELECT * FROM campaigns; DROP TABLE campaigns; ALTER TABLE campaigns_new RENAME TO campaigns`. `db.Migrate()` runs each file in its own transaction.
 
 ---
 
@@ -254,9 +255,10 @@ Across all eight specs, the database gains these new or modified objects:
 |---|---|
 | `migrations/006_recipient_groups.sql` | Spec 02 |
 | `migrations/007_upload_sessions.sql` | Spec 01 |
-| `migrations/008_job_retry.sql` | Spec 04 |
+| `migrations/008_wm_algorithm.sql` | Spec 07 |
 | `migrations/009_webhook_delivery.sql` | Spec 06 |
-| `migrations/010_wm_algorithm.sql` | Spec 07 |
+| `migrations/010_archive_campaigns.sql` | — |
+| `migrations/011_job_retry.sql` | Spec 04 |
 
 ---
 
@@ -336,13 +338,13 @@ These items were considered and deferred. They should not creep into v0.3 work w
 
 These questions span multiple specs and need a decision before implementation begins.
 
-### Q1: Migration 008 safety (Spec 04)
+### Q1: Migration 011 safety (Spec 04)
 
-`008_job_retry.sql` drops and recreates the `campaigns` table. Is `db.Migrate()` transactional enough to make this safe if the server crashes mid-migration? **Decision needed:** either verify that `db.Migrate()` wraps each file in `BEGIN EXCLUSIVE … COMMIT`, or rewrite the migration to use the add-column + trigger approach for the CHECK constraint instead of a table recreation.
+`011_job_retry.sql` drops and recreates the `campaigns` table, as `010_archive_campaigns.sql` already did. Is `db.Migrate()` transactional enough to make this safe if the server crashes mid-migration? **Decision needed:** either verify that `db.Migrate()` wraps each file in `BEGIN EXCLUSIVE … COMMIT`, or rewrite the migration to use the add-column + trigger approach for the CHECK constraint instead of a table recreation.
 
 ### Q2: Migration file ordering (all specs)
 
-The numbers `006–010` are assigned in this index. Ensure no existing unreleased branch has already used `006_` for something else before merging any of these specs. Run `ls migrations/` on all active branches before creating migration files.
+The numbers `006–011` are recorded in this index. Ensure no existing unreleased branch has already used `006_` for something else before merging any of these specs. Run `ls migrations/` on all active branches before creating migration files.
 
 ### Q3: `isPermanentFailure` accuracy (Spec 04)
 

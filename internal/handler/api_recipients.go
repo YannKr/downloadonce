@@ -5,11 +5,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type apiRecipient struct {
@@ -78,21 +78,11 @@ func (h *Handler) APIRecipientList(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 	isAdmin := auth.IsAdmin(r.Context())
 
-	recipients, err := db.ListRecipients(h.DB)
+	recipients, err := db.ListRecipients(h.DB, accountID, isAdmin)
 	if err != nil {
 		slog.Error("api list recipients", "error", err)
 		renderJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list recipients")
 		return
-	}
-
-	if !isAdmin {
-		filtered := recipients[:0]
-		for _, rec := range recipients {
-			if rec.AccountID == accountID {
-				filtered = append(filtered, rec)
-			}
-		}
-		recipients = filtered
 	}
 
 	page, perPage := paginate(r)

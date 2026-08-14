@@ -17,12 +17,20 @@ func CreateAsset(database *sql.DB, a *model.Asset) error {
 	return err
 }
 
-func ListAssets(database *sql.DB) ([]model.Asset, error) {
-	rows, err := database.Query(
-		`SELECT id, account_id, title, asset_type, original_path,
+// ListAssets returns the assets owned by accountID. When showAll is true the
+// account filter is skipped; only admins may pass showAll.
+func ListAssets(database *sql.DB, accountID string, showAll bool) ([]model.Asset, error) {
+	query := `SELECT id, account_id, title, asset_type, original_path,
 		  file_size_bytes, sha256_original, mime_type, duration_secs, resolution_w, resolution_h, created_at
-		 FROM assets ORDER BY created_at DESC`,
-	)
+		 FROM assets`
+	args := []any{}
+	if !showAll {
+		query += ` WHERE account_id = ?`
+		args = append(args, accountID)
+	}
+	query += ` ORDER BY created_at DESC`
+
+	rows, err := database.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

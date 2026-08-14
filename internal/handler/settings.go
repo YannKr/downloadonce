@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/YannKr/downloadonce/internal/auth"
 	"github.com/YannKr/downloadonce/internal/db"
 	"github.com/YannKr/downloadonce/internal/model"
+	"github.com/YannKr/downloadonce/internal/safehttp"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type settingsData struct {
@@ -112,6 +113,11 @@ func (h *Handler) WebhookCreate(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 	url := r.FormValue("url")
 	if url == "" {
+		http.Redirect(w, r, "/settings", http.StatusSeeOther)
+		return
+	}
+	if err := safehttp.ValidateURL(url); err != nil {
+		setFlash(w, "Webhook URL rejected: "+err.Error())
 		http.Redirect(w, r, "/settings", http.StatusSeeOther)
 		return
 	}
