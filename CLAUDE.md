@@ -98,7 +98,9 @@ Campaign publish triggers one job per recipient/token:
 
 The watermark payload (16 bytes) encodes: version (2 bytes) + truncated SHA-256 of token ID (8 bytes) + truncated SHA-256 of campaign ID (4 bytes) + CRC-16 (2 bytes). See `internal/watermark/payload.go`.
 
-Pre-computed watermarked files are stored at `data/watermarked/<campaign_id>/<token_id>.<ext>`. Downloads serve these files directly — no on-demand processing.
+Watermarked files are stored at `data/watermarked/<campaign_id>/<token_id>.<ext>`. Publishing a campaign normally watermarks every token up front and the download then serves the finished file directly.
+
+There is one exception. If a recipient opens a link whose token is still `PENDING` — the campaign was published while the worker was behind, or the job failed and was cleared — `DownloadPage` enqueues the watermark job on demand and shows `download_preparing.html` with live progress. See `internal/handler/download.go`.
 
 ### Template Rendering
 

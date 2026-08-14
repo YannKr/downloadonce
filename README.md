@@ -264,7 +264,7 @@ Single-binary, single-process — no external services required beyond the syste
 | Video watermarking | FFmpeg subprocess with `drawtext` overlay |
 | Image watermarking | ImageMagick subprocess + Python DWT-DCT embedding |
 | Invisible watermark | `invisible-watermark` Python library |
-| File delivery | Pre-computed watermarked files served directly |
+| File delivery | Watermarked files served directly; a link opened before its file is ready enqueues the job on demand and shows a progress page |
 | File embedding | Templates, static assets, migrations, and Python scripts compiled into the binary |
 
 The 16-byte watermark payload encodes: version (2 B) + truncated SHA-256 of token ID (8 B) + truncated SHA-256 of campaign ID (4 B) + CRC-16 checksum (2 B).
