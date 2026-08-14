@@ -105,6 +105,12 @@ func (h *Handler) DetectResult(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not found", 404)
 		return
 	}
+	// EnqueueDetectJob stores the submitting account in campaign_id, which is
+	// how APIDetectGet checks ownership. This page never checked at all.
+	if job.CampaignID != auth.AccountFromContext(r.Context()) && !auth.IsAdmin(r.Context()) {
+		http.Error(w, "Not found", 404)
+		return
+	}
 
 	h.renderAuth(w, r, "detect_result.html", "Detection Result", job)
 }
