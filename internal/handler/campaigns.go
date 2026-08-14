@@ -56,8 +56,8 @@ func (h *Handler) CampaignList(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CampaignNewForm(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
-	assets, _ := db.ListAssets(h.DB)
-	recipients, _ := db.ListRecipients(h.DB)
+	assets, _ := db.ListAssets(h.DB, accountID, false)
+	recipients, _ := db.ListRecipients(h.DB, accountID, false)
 	groups, _ := db.ListRecipientGroups(h.DB, accountID)
 	h.renderAuth(w, r, "campaign_new.html", "New Campaign", campaignNewData{
 		Assets:         assets,
@@ -99,8 +99,8 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if assetID == "" || name == "" || len(finalIDs) == 0 {
-		assets, _ := db.ListAssets(h.DB)
-		recipients, _ := db.ListRecipients(h.DB)
+		assets, _ := db.ListAssets(h.DB, accountID, false)
+		recipients, _ := db.ListRecipients(h.DB, accountID, false)
 		groups, _ := db.ListRecipientGroups(h.DB, accountID)
 		selected := make(map[string]bool)
 		for _, rid := range recipientIDs {
@@ -132,7 +132,7 @@ func (h *Handler) CampaignCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	asset, err := db.GetAsset(h.DB, assetID)
-	if err != nil || asset == nil {
+	if err != nil || asset == nil || asset.AccountID != accountID {
 		http.Error(w, "Invalid asset", 400)
 		return
 	}
@@ -243,7 +243,7 @@ func (h *Handler) CampaignDetail(w http.ResponseWriter, r *http.Request) {
 	for _, t := range tokens {
 		added[t.RecipientID] = struct{}{}
 	}
-	allRecipients, _ := db.ListRecipients(h.DB)
+	allRecipients, _ := db.ListRecipients(h.DB, accountID, false)
 	var available []model.Recipient
 	for _, rec := range allRecipients {
 		if _, ok := added[rec.ID]; !ok {

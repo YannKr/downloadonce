@@ -19,7 +19,8 @@ type recipientPageData struct {
 }
 
 func (h *Handler) RecipientList(w http.ResponseWriter, r *http.Request) {
-	recipients, err := db.ListRecipientsWithGroups(h.DB)
+	accountID := auth.AccountFromContext(r.Context())
+	recipients, err := db.ListRecipientsWithGroups(h.DB, accountID, auth.IsAdmin(r.Context()))
 	if err != nil {
 		http.Error(w, "Internal error", 500)
 		return
@@ -35,7 +36,7 @@ func (h *Handler) RecipientCreate(w http.ResponseWriter, r *http.Request) {
 	org := strings.TrimSpace(r.FormValue("org"))
 
 	if name == "" || email == "" {
-		recipients, _ := db.ListRecipientsWithGroups(h.DB)
+		recipients, _ := db.ListRecipientsWithGroups(h.DB, accountID, auth.IsAdmin(r.Context()))
 		h.render(w, r, "recipients.html", PageData{
 			Title: "Recipients", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
@@ -54,7 +55,7 @@ func (h *Handler) RecipientCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := db.CreateRecipient(h.DB, recipient); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			recipients, _ := db.ListRecipientsWithGroups(h.DB)
+			recipients, _ := db.ListRecipientsWithGroups(h.DB, accountID, auth.IsAdmin(r.Context()))
 			h.render(w, r, "recipients.html", PageData{
 				Title: "Recipients", Authenticated: true,
 				IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),
@@ -112,7 +113,7 @@ func (h *Handler) RecipientImport(w http.ResponseWriter, r *http.Request) {
 		created++
 	}
 
-	recipients, _ := db.ListRecipientsWithGroups(h.DB)
+	recipients, _ := db.ListRecipientsWithGroups(h.DB, accountID, auth.IsAdmin(r.Context()))
 	flash := ""
 	if created > 0 {
 		flash += strings.Replace("N created", "N", strings.TrimSpace(itoa(created)), 1)

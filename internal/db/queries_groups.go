@@ -160,15 +160,26 @@ func ListGroupMemberIDs(database *sql.DB, groupID, accountID string) ([]string, 
 	return ids, rows.Err()
 }
 
-func ListRecipientsWithGroups(database *sql.DB) ([]model.RecipientWithGroups, error) {
-	rows, err := database.Query(`
+// ListRecipientsWithGroups returns the recipients owned by accountID. When
+// showAll is true the account filter is skipped; only admins may pass showAll.
+func ListRecipientsWithGroups(database *sql.DB, accountID string, showAll bool) ([]model.RecipientWithGroups, error) {
+	query := `
 		SELECT r.id, r.account_id, r.name, r.email, r.org, r.created_at,
 			COALESCE(GROUP_CONCAT(g.id || '|' || g.name, '||'), '') AS groups
 		FROM recipients r
 		LEFT JOIN recipient_group_members m ON m.recipient_id = r.id
-		LEFT JOIN recipient_groups g ON g.id = m.group_id
+		LEFT JOIN recipient_groups g ON g.id = m.group_id`
+	args := []any{}
+	if !showAll {
+		query += `
+		WHERE r.account_id = ?`
+		args = append(args, accountID)
+	}
+	query += `
 		GROUP BY r.id
-		ORDER BY r.name ASC`)
+		ORDER BY r.name ASC`
+
+	rows, err := database.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

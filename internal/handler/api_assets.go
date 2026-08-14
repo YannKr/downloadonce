@@ -204,22 +204,11 @@ func (h *Handler) APIAssetList(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 	isAdmin := auth.IsAdmin(r.Context())
 
-	assets, err := db.ListAssets(h.DB)
+	assets, err := db.ListAssets(h.DB, accountID, isAdmin)
 	if err != nil {
 		slog.Error("api list assets", "error", err)
 		renderJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list assets")
 		return
-	}
-
-	// Filter by account unless admin
-	if !isAdmin {
-		filtered := assets[:0]
-		for _, a := range assets {
-			if a.AccountID == accountID {
-				filtered = append(filtered, a)
-			}
-		}
-		assets = filtered
 	}
 
 	page, perPage := paginate(r)

@@ -135,7 +135,7 @@ func (h *Handler) APICampaignCreate(w http.ResponseWriter, r *http.Request) {
 		renderJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get asset")
 		return
 	}
-	if asset == nil {
+	if asset == nil || asset.AccountID != accountID {
 		renderJSONError(w, http.StatusNotFound, "NOT_FOUND", "asset not found")
 		return
 	}

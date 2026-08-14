@@ -14,11 +14,19 @@ func CreateRecipient(database *sql.DB, r *model.Recipient) error {
 	return err
 }
 
-func ListRecipients(database *sql.DB) ([]model.Recipient, error) {
-	rows, err := database.Query(
-		`SELECT id, account_id, name, email, org, created_at
-		 FROM recipients ORDER BY name ASC`,
-	)
+// ListRecipients returns the recipients owned by accountID. When showAll is
+// true the account filter is skipped; only admins may pass showAll.
+func ListRecipients(database *sql.DB, accountID string, showAll bool) ([]model.Recipient, error) {
+	query := `SELECT id, account_id, name, email, org, created_at
+		 FROM recipients`
+	args := []any{}
+	if !showAll {
+		query += ` WHERE account_id = ?`
+		args = append(args, accountID)
+	}
+	query += ` ORDER BY name ASC`
+
+	rows, err := database.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

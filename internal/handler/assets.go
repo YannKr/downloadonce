@@ -30,7 +30,8 @@ type assetUploadData struct {
 }
 
 func (h *Handler) AssetList(w http.ResponseWriter, r *http.Request) {
-	assets, err := db.ListAssets(h.DB)
+	accountID := auth.AccountFromContext(r.Context())
+	assets, err := db.ListAssets(h.DB, accountID, auth.IsAdmin(r.Context()))
 	if err != nil {
 		slog.Error("list assets", "error", err)
 		http.Error(w, "Internal error", 500)
