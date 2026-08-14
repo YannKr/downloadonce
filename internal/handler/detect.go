@@ -21,7 +21,8 @@ func (h *Handler) DetectForm(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DetectSubmit(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
-	if err := r.ParseMultipartForm(h.Cfg.MaxUploadBytes); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, h.Cfg.MaxUploadBytes)
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		h.render(w, r, "detect.html", PageData{
 			Title: "Detect Watermark", Authenticated: true,
 			IsAdmin: auth.IsAdmin(r.Context()), UserName: auth.NameFromContext(r.Context()),

@@ -20,6 +20,11 @@ import (
 	"github.com/YannKr/downloadonce/internal/webhook"
 )
 
+// maxMultipartMemory caps what ParseMultipartForm keeps in RAM. Anything
+// larger spills to a temp file. The total request size is capped separately
+// with http.MaxBytesReader and MAX_UPLOAD_BYTES.
+const maxMultipartMemory = 32 << 20 // 32 MiB
+
 type Handler struct {
 	DB        *sql.DB
 	Cfg       *config.Config

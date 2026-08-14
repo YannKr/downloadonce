@@ -55,7 +55,8 @@ func assetToAPI(a *model.Asset) apiAsset {
 func (h *Handler) APIAssetUpload(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
-	if err := r.ParseMultipartForm(2 << 30); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, h.Cfg.MaxUploadBytes)
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		renderJSONError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to parse multipart form")
 		return
 	}

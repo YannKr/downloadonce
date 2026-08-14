@@ -52,6 +52,10 @@ func (h *Handler) UploadInit(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "filename, size, mime_type, chunk_size required", http.StatusBadRequest)
 		return
 	}
+	if req.Size > h.Cfg.MaxUploadBytes || req.ChunkSize > h.Cfg.MaxUploadBytes {
+		jsonError(w, fmt.Sprintf("upload exceeds the %d byte limit", h.Cfg.MaxUploadBytes), http.StatusRequestEntityTooLarge)
+		return
+	}
 	_, mimeOK := watermark.MimeToExt[req.MimeType]
 	if !mimeOK {
 		ext := strings.ToLower(filepath.Ext(req.Filename))
@@ -144,10 +148,12 @@ func (h *Handler) UploadChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	if _, err = io.Copy(f, r.Body); err != nil {
+	// Cap the body at the chunk size agreed at init. Without this a client
+	// could stream an unbounded body into one chunk and fill the disk.
+	if _, err = io.Copy(f, http.MaxBytesReader(w, r.Body, session.ChunkSize)); err != nil {
 		slog.Error("upload chunk: copy body", "error", err)
 		os.Remove(chunkPath)
-		jsonError(w, "internal error", http.StatusInternalServerError)
+		jsonError(w, "chunk larger than the agreed chunk size", http.StatusRequestEntityTooLarge)
 		return
 	}
 	recvd := session.ReceivedChunks

@@ -48,7 +48,8 @@ func (h *Handler) AssetUploadForm(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) AssetUploadSubmit(w http.ResponseWriter, r *http.Request) {
 	accountID := auth.AccountFromContext(r.Context())
 
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, h.Cfg.MaxUploadBytes)
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		h.renderAuth(w, r, "asset_upload.html", "Upload Assets", nil)
 		return
 	}
