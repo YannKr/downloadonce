@@ -7,7 +7,7 @@ Thank you for your interest in contributing. This document explains how to get s
 ## Development environment
 
 **Requirements:**
-- Go 1.26.6+
+- Go 1.27.3+
 - Docker + Docker Compose (easiest for running the full stack)
 - ffmpeg, imagemagick (for local watermarking without Docker)
 
