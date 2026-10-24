@@ -42,7 +42,7 @@ Visit **http://localhost:8080** — the first registered account becomes admin a
 | Deployment | Requirements |
 |---|---|
 | **Docker (recommended)** | Docker + Docker Compose — everything else (FFmpeg, ImageMagick, Python) is bundled in the image |
-| **Bare metal** | Go 1.26.6+, `ffmpeg`, `imagemagick`, `python3`, pip packages `invisible-watermark` + `opencv-python-headless` |
+| **Bare metal** | Go 1.27.3+, `ffmpeg`, `imagemagick`, `python3`, pip packages `invisible-watermark` + `opencv-python-headless` |
 
 ---
 

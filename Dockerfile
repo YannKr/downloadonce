@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-bookworm AS builder
+FROM golang:1.27-trixie AS builder
 
 ARG VERSION=dev
 
