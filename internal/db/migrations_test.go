@@ -1,8 +1,10 @@
 package db
 
 import (
+	"bytes"
 	"database/sql"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"os"
 	"strings"
@@ -167,6 +169,64 @@ ALTER TABLE campaigns_new RENAME TO campaigns;
 	}
 	if got := rowCounts(t, database); !maps.Equal(got, before) {
 		t.Errorf("rows after rejected migration = %v, want %v", got, before)
+	}
+	assertForeignKeysOn(t, database, "after rejected migration")
+}
+
+// TestMigrateToleratesExistingViolations upgrades a database at 009 that
+// already holds an orphan token, as the sqlite3 shell leaves after a manual
+// DELETE (it has foreign keys off by default). The upgrade must still run
+// and keep every row, and a migration that adds a violation of the same kind
+// must still fail.
+func TestMigrateToleratesExistingViolations(t *testing.T) {
+	database, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+	if err := Migrate(database, migrationFiles(t, "010")); err != nil {
+		t.Fatalf("migrate to 009: %v", err)
+	}
+	seedCampaign(t, database)
+	for _, stmt := range []string{
+		`PRAGMA foreign_keys=OFF`,
+		`INSERT INTO campaigns (id, account_id, asset_id, name) VALUES ('gone', 'acct', 'asset', 'gone')`,
+		`INSERT INTO download_tokens (id, campaign_id, recipient_id) VALUES ('orphan', 'gone', 'rec-1')`,
+		`DELETE FROM campaigns WHERE id = 'gone'`,
+		`PRAGMA foreign_keys=ON`,
+	} {
+		if _, err := database.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+
+	// TestMain discards the logs. Capture them here to see the warning.
+	var logs bytes.Buffer
+	defaultLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(defaultLogger) })
+
+	if err := Migrate(database, os.DirFS("../..")); err != nil {
+		t.Fatalf("upgrade with an existing violation: %v", err)
+	}
+	want := map[string]int{"campaigns": 1, "download_tokens": 3, "download_events": 1, "watermark_index": 1, "jobs": 1}
+	if got := rowCounts(t, database); !maps.Equal(got, want) {
+		t.Errorf("rows after upgrade = %v, want %v", got, want)
+	}
+	if !strings.Contains(logs.String(), "already holds foreign key violations") ||
+		!strings.Contains(logs.String(), "download_tokens -> campaigns") {
+		t.Errorf("no warning for the existing download_tokens -> campaigns violation, logs:\n%s", logs.String())
+	}
+
+	const bad = "999_rebuild_campaigns_without_rows.sql"
+	files := migrationFiles(t, "")
+	files["migrations/"+bad] = &fstest.MapFile{Data: []byte(`
+CREATE TABLE campaigns_new (id TEXT PRIMARY KEY);
+DROP TABLE campaigns;
+ALTER TABLE campaigns_new RENAME TO campaigns;
+`)}
+	if err := Migrate(database, files); err == nil || !strings.Contains(err.Error(), bad) {
+		t.Fatalf("Migrate = %v, want a foreign key error naming %s", err, bad)
 	}
 	assertForeignKeysOn(t, database, "after rejected migration")
 }

@@ -84,7 +84,7 @@ No Redis, no external job queue. The `jobs` table in SQLite is the queue.
 
 SQL files in `migrations/` are applied in filename order by `db.Migrate()` at startup. Add new migrations as `NNN_description.sql` — they run automatically on next start. Never modify existing migration files.
 
-`Migrate` runs each file in a transaction with foreign keys off, so a table rebuild with `DROP TABLE` does not fire `ON DELETE CASCADE`. It rolls the file back if `PRAGMA foreign_key_check` then reports a violation. A `PRAGMA foreign_keys` line inside a migration file has no effect.
+`Migrate` runs each file in a transaction with foreign keys off, so a table rebuild with `DROP TABLE` does not fire `ON DELETE CASCADE`. It rolls the file back if `PRAGMA foreign_key_check` then reports more violations than before the file ran.
 
 ### Authentication & Authorization
 

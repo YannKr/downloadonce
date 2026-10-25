@@ -79,23 +79,36 @@ func Migrate(database *sql.DB, migrationFS fs.FS) (err error) {
 			return fmt.Errorf("begin tx for %s: %w", name, err)
 		}
 
+		// Only violations the migration adds fail it. Rows that already
+		// violate a foreign key were written outside the application (the
+		// sqlite3 shell has foreign keys off by default), and a migration
+		// that runs with foreign keys off cannot make them worse.
+		before, err := foreignKeyViolations(tx)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("foreign key check before %s: %w", name, err)
+		}
+		for pair, n := range before {
+			slog.Warn("database already holds foreign key violations; run PRAGMA foreign_key_check to list them",
+				"migration", name, "child_parent", pair, "rows", n)
+		}
+
 		if _, err := tx.Exec(string(content)); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("exec migration %s: %w", name, err)
 		}
 
-		var table, parent string
-		var rowid sql.NullInt64
-		var fkid int
-		err = tx.QueryRow("PRAGMA foreign_key_check").Scan(&table, &rowid, &parent, &fkid)
-		if err == nil {
-			tx.Rollback()
-			return fmt.Errorf("migration %s leaves foreign key violations: %s row %d has no matching row in %s",
-				name, table, rowid.Int64, parent)
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		after, err := foreignKeyViolations(tx)
+		if err != nil {
 			tx.Rollback()
 			return fmt.Errorf("foreign key check for %s: %w", name, err)
+		}
+		for pair, n := range after {
+			if n > before[pair] {
+				tx.Rollback()
+				return fmt.Errorf("migration %s leaves foreign key violations: %d new rows in %s have no matching parent row",
+					name, n-before[pair], pair)
+			}
 		}
 
 		if _, err := tx.Exec("INSERT INTO _migrations (filename) VALUES (?)", name); err != nil {
@@ -132,4 +145,25 @@ func setForeignKeys(ctx context.Context, conn *sql.Conn, on bool) error {
 		return fmt.Errorf("foreign_keys is %d after setting it to %d", got, want)
 	}
 	return nil
+}
+
+// foreignKeyViolations counts the rows PRAGMA foreign_key_check reports, per
+// "child -> parent" table pair. A count per pair, not a set of rowids,
+// because a table rebuild can renumber rowids.
+func foreignKeyViolations(tx *sql.Tx) (map[string]int, error) {
+	rows, err := tx.Query(`SELECT "table" || ' -> ' || parent, COUNT(*) FROM pragma_foreign_key_check GROUP BY 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var pair string
+		var n int
+		if err := rows.Scan(&pair, &n); err != nil {
+			return nil, err
+		}
+		counts[pair] = n
+	}
+	return counts, rows.Err()
 }
