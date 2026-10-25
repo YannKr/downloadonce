@@ -1,15 +1,18 @@
 package db
 
 import (
+	"context"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"sort"
 )
 
-func Migrate(database *sql.DB, migrationFS fs.FS) error {
-	_, err := database.Exec(`CREATE TABLE IF NOT EXISTS _migrations (
+func Migrate(database *sql.DB, migrationFS fs.FS) (err error) {
+	_, err = database.Exec(`CREATE TABLE IF NOT EXISTS _migrations (
 		filename   TEXT PRIMARY KEY,
 		applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 	)`)
@@ -30,9 +33,35 @@ func Migrate(database *sql.DB, migrationFS fs.FS) error {
 	}
 	sort.Strings(names)
 
+	// Migrations run with foreign keys off. A table rebuild (create the new
+	// table, copy the rows, DROP the old one, rename) otherwise loses data:
+	// with foreign keys on, DROP TABLE first deletes every row, which fires
+	// ON DELETE CASCADE in the child tables. SQLite ignores the pragma inside
+	// a transaction, so it is set on one pinned connection outside them, and
+	// PRAGMA foreign_key_check runs before each commit instead. Everything
+	// below must use conn: with MaxOpenConns(1), a query on database would
+	// wait for conn forever.
+	ctx := context.Background()
+	conn, err := database.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("pin connection: %w", err)
+	}
+	defer func() {
+		if fkErr := setForeignKeys(ctx, conn, true); fkErr != nil {
+			// Discard the connection rather than return it to the pool
+			// without foreign keys. Open turns them on for new connections.
+			conn.Raw(func(any) error { return driver.ErrBadConn })
+			err = errors.Join(err, fkErr)
+		}
+		conn.Close()
+	}()
+	if err := setForeignKeys(ctx, conn, false); err != nil {
+		return err
+	}
+
 	for _, name := range names {
 		var count int
-		err := database.QueryRow("SELECT COUNT(*) FROM _migrations WHERE filename = ?", name).Scan(&count)
+		err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM _migrations WHERE filename = ?", name).Scan(&count)
 		if err != nil {
 			return fmt.Errorf("check migration %s: %w", name, err)
 		}
@@ -45,14 +74,41 @@ func Migrate(database *sql.DB, migrationFS fs.FS) error {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
 
-		tx, err := database.Begin()
+		tx, err := conn.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("begin tx for %s: %w", name, err)
+		}
+
+		// Only violations the migration adds fail it. Rows that already
+		// violate a foreign key were written outside the application (the
+		// sqlite3 shell has foreign keys off by default), and a migration
+		// that runs with foreign keys off cannot make them worse.
+		before, err := foreignKeyViolations(tx)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("foreign key check before %s: %w", name, err)
+		}
+		for pair, n := range before {
+			slog.Warn("database already holds foreign key violations; run PRAGMA foreign_key_check to list them",
+				"migration", name, "child_parent", pair, "rows", n)
 		}
 
 		if _, err := tx.Exec(string(content)); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("exec migration %s: %w", name, err)
+		}
+
+		after, err := foreignKeyViolations(tx)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("foreign key check for %s: %w", name, err)
+		}
+		for pair, n := range after {
+			if n > before[pair] {
+				tx.Rollback()
+				return fmt.Errorf("migration %s leaves foreign key violations: %d new rows in %s have no matching parent row",
+					name, n-before[pair], pair)
+			}
 		}
 
 		if _, err := tx.Exec("INSERT INTO _migrations (filename) VALUES (?)", name); err != nil {
@@ -68,4 +124,46 @@ func Migrate(database *sql.DB, migrationFS fs.FS) error {
 	}
 
 	return nil
+}
+
+// setForeignKeys turns foreign key enforcement on or off for conn, then reads
+// the pragma back, because SQLite ignores the change without an error inside
+// a transaction.
+func setForeignKeys(ctx context.Context, conn *sql.Conn, on bool) error {
+	want := 0
+	if on {
+		want = 1
+	}
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("PRAGMA foreign_keys=%d", want)); err != nil {
+		return fmt.Errorf("set foreign_keys=%d: %w", want, err)
+	}
+	var got int
+	if err := conn.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&got); err != nil {
+		return fmt.Errorf("read foreign_keys: %w", err)
+	}
+	if got != want {
+		return fmt.Errorf("foreign_keys is %d after setting it to %d", got, want)
+	}
+	return nil
+}
+
+// foreignKeyViolations counts the rows PRAGMA foreign_key_check reports, per
+// "child -> parent" table pair. A count per pair, not a set of rowids,
+// because a table rebuild can renumber rowids.
+func foreignKeyViolations(tx *sql.Tx) (map[string]int, error) {
+	rows, err := tx.Query(`SELECT "table" || ' -> ' || parent, COUNT(*) FROM pragma_foreign_key_check GROUP BY 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var pair string
+		var n int
+		if err := rows.Scan(&pair, &n); err != nil {
+			return nil, err
+		}
+		counts[pair] = n
+	}
+	return counts, rows.Err()
 }
