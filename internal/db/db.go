@@ -18,9 +18,9 @@ func Open(dataDir string) (*sql.DB, error) {
 
 	dbPath := filepath.Join(dbDir, "downloadonce.db")
 
-	// foreign_keys is a per-connection setting, so it goes in the DSN, which
-	// the driver applies to every connection it opens. An Exec would reach
-	// only the first one.
+	// foreign_keys is a per-connection setting. In the DSN, the driver applies
+	// it to every connection it opens, so a connection that replaces the
+	// first one also gets it.
 	database, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
