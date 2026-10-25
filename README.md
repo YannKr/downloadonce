@@ -277,8 +277,11 @@ See [`CLAUDE.md`](CLAUDE.md) for a full developer guide.
 
 Releases follow [Semantic Versioning](https://semver.org/). Binary builds are available on the [GitHub Releases](https://github.com/YannKr/downloadonce/releases) page.
 
+Before you upgrade to any release, back up `$DATA_DIR/db/downloadonce.db`. Stop the service first, and copy the full `$DATA_DIR/db/` directory.
+
 | Version | Highlights |
 |---|---|
+| **v2.0.1** | **Fix data loss on upgrade.** Migrations 010 and 011 deleted every download token, download event and watermark trace row, without an error. Affected: a database from v1.0.0–v1.1.0 upgraded to v1.1.1 or later, and a database from v1.1.1–v1.1.2 upgraded to v1.2.0 or later. A database created on v1.2.0 or later is not affected. If a database is still on v1.1.2 or earlier, v2.0.1 upgrades it without data loss. v2.0.1 cannot recover rows that an earlier upgrade deleted. Only a backup from before that upgrade has them. |
 | **v1.1.2** | Fix `auto_publish` API flag skipping watermark job enqueue |
 | **v1.1.1** | Campaign archive, clone on published campaigns, add recipients after publish |
 | **v1.1.0** | REST API with Bearer auth, OpenAPI spec, webhook delivery log + retry, campaign clone, export links, Go-native DWT-DCT-SVD watermarking |
