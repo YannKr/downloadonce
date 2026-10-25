@@ -86,6 +86,8 @@ SQL files in `migrations/` are applied in filename order by `db.Migrate()` at st
 
 `Migrate` runs each file in a transaction with foreign keys off, so a table rebuild with `DROP TABLE` does not fire `ON DELETE CASCADE`. It rolls the file back if `PRAGMA foreign_key_check` then reports more violations than before the file ran.
 
+A migration file must not contain `BEGIN`, `COMMIT` or `PRAGMA`: `Migrate` wraps each file in a transaction, and a bare `COMMIT` applies only part of the migration.
+
 ### Authentication & Authorization
 
 Two authentication paths:
