@@ -14,7 +14,8 @@ FROM debian:trixie-slim
 
 # System tools only — no python3-opencv from apt (it drags in Qt5, Mesa,
 # GPU drivers, OpenMPI, GDAL, and 350+ packages we don't need).
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# apt-get upgrade installs security updates that the base image does not have yet.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     ffmpeg \
     imagemagick \
     fonts-dejavu-core \
@@ -30,6 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # heavier opencv-python (GUI) variant or torch.
 # invisible-watermark bundles a RivaGAN backend that does a hard `import torch`
 # at module load time; we only use the DWT-DCT-SVD method so we stub it out.
+# pip is removed from the venv at the end: nothing uses it at runtime.
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir \
        numpy \
@@ -40,6 +42,7 @@ RUN python3 -m venv /opt/venv \
 import glob; \
 [open(f,'w').write('class RivaWatermark:\n    def __init__(self,*a,**k): raise RuntimeError(\"RivaGAN requires torch\")\n') \
  for f in glob.glob('/opt/venv/lib/python*/site-packages/imwatermark/rivaGan.py')]" \
+    && /opt/venv/bin/pip uninstall -y pip \
     && find /opt/venv -name "*.pyc" -delete \
     && find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; true
 
